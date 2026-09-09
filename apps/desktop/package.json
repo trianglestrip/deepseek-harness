@@ -18,6 +18,7 @@
     "dev": "tsx src/main.ts",
     "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/window', 'dist/window', { recursive: true })\"",
     "start": "electron .",
+    "package:dir": "node packaging/prepare-runtime.mjs && electron-builder --dir",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

@@ -61,10 +61,11 @@ async function launch(): Promise<void> {
     }
     await mainWindow?.loadURL(errorPageUrl({ state: 'Starting the dsh web server…' }))
     // Dev resolves the checkout CLI from the repository root; packaged
-    // resolves the app's own @deepseek-ai/dsh dependency from the app root.
+    // resolves the deployed dsh closure and bundled Node from the
+    // Electron resources root.
     const runtime = resolveDshRuntime(
       app.isPackaged ? 'packaged' : 'dev',
-      app.isPackaged ? join(__dirname, '..') : rootDir,
+      app.isPackaged ? process.resourcesPath : rootDir,
     )
     const handle = startServer(runtime, { port: DEFAULT_PORT })
     server = handle

@@ -1,0 +1,23 @@
+appId: ai.deepseek.dsh.desktop
+productName: DeepSeek Harness Desktop
+directories:
+  output: release
+# The Electron shell is only the compiled entry and static window assets.
+# The dsh runtime (deployed closure) and the bundled Node travel as
+# extraResources, outside the asar: the spawned Node is a real OS process
+# and cannot read asar virtual paths, and pnpm's workspace symlinks must
+# not enter electron-builder's dependency collection.
+files:
+  - dist/**/*
+  - package.json
+  - '!node_modules/**'
+# Nothing in the Electron main process requires native modules, and the dsh
+# tree runs under the bundled stock-Node runtime (same ABI family), so the
+# default Electron-ABI rebuild (node-gyp + VS toolchain) is work without a
+# consumer.
+npmRebuild: false
+extraResources:
+  - from: packaging/runtime
+    to: runtime
+  - from: packaging/dsh-runtime
+    to: dsh

@@ -38,9 +38,18 @@ pnpm --filter @deepseek-ai/dsh-desktop run dev
 DSH_DESKTOP_URL='http://127.0.0.1:3080/?token=…' pnpm --filter @deepseek-ai/dsh-desktop run dev
 ```
 
-## 打包（计划中）
+## 打包
 
-打包形态捆绑独立 Node 运行时（`extraResources`，asar 外）加同版本 `@deepseek-ai/dsh` 包——Electron 内嵌 Node 不满足 dsh engines 范围，`ELECTRON_RUN_AS_NODE` 因此不可用。electron-builder 配置是下一个工作项；`resolveDshRuntime('packaged', …)` 已解析该布局。完整路线图（含阶段二消除渲染层与 dsh 之间回环 HTTP 跳的 IPC fetch/stream 载波）见 `PLAN.md`。
+```sh
+pnpm --filter @deepseek-ai/dsh-desktop run package:dir   # unpacked distribution under release/win-unpacked
+```
+
+electron-builder 运行前，`packaging/prepare-runtime.mjs` 会把两个运行时输入装配进 `extraResources`：
+
+- `runtime/`：独立 Node 二进制（先走 npmmirror 镜像、nodejs.org 兜底；版本可用 `DSH_DESKTOP_NODE_VERSION` 覆盖）。
+- `dsh-runtime/`：dsh 生产闭包——从 `apps/cli` 出发遍历 workspace 链接图（只跟 manifest 的生产依赖），复制每个可达单元并保留相对链接，闭包的解析行为与 checkout 完全一致。`pnpm deploy` 在此处不可用：这种规模的 workspace 下其 legacy 产物会丢失 `.pnpm` 传递条目。
+
+electron-builder 只把编译产物与静态窗口资产打进 `app.asar`；dsh 闭包与 Node runtime 走 asar 外的 `extraResources`——spawn 出的 Node 是真实系统进程，读不了 asar 虚拟路径。原生模块**不**为 Electron 重编译（`npmRebuild: false`）：dsh 树运行在捆绑的原生 Node 下，Electron 主进程也不依赖任何原生模块。未打包分发已在 Windows 上完成端到端验证；NSIS 安装器目标是剩余的打包工作项。
 
 ## 验证
 

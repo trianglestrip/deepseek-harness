@@ -1,4 +1,8 @@
 node_modules/
 dist/
+release/
+packaging/runtime/
+packaging/deploy-tmp/
+packaging/dsh-runtime/
 *.log
 .DS_Store

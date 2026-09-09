@@ -1,5 +1,4 @@
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
 /** Which dsh distribution the shell supervises. */
 export type DshRuntimeMode = 'dev' | 'packaged'
@@ -16,21 +15,26 @@ export interface DshRuntime {
   env: NodeJS.ProcessEnv
 }
 
-/** Directory under the packaged app root that carries the bundled Node runtime. */
+/** Directory under the packaged resources root carrying the bundled Node runtime. */
 const PACKAGED_RUNTIME_DIR = 'runtime'
+/** Directory under the packaged resources root carrying the deployed dsh closure. */
+const PACKAGED_DSH_DIR = 'dsh'
+/** CLI entry inside the closure, at its checkout-relative location. */
+const PACKAGED_DSH_BIN = ['apps', 'cli', 'lib', 'bin.js']
 
 /**
  * Resolve how this distribution launches dsh.
  *
  * Dev runs the checkout's CLI through tsx (the dsh source-launch contract):
- * there `rootDir` is the repository checkout. Packaged runs the same-version
- * `@deepseek-ai/dsh` bin — declared as this app's dependency, so it resolves
- * from the app's own node_modules — under the Node runtime bundled into
- * `extraResources`; there `rootDir` is the desktop app root. Electron's
- * embedded Node does not satisfy the engines range, so
- * `ELECTRON_RUN_AS_NODE` is not an option.
+ * there `rootDir` is the repository checkout. Packaged runs the dsh runtime
+ * deployed as a self-contained extraResource (`pnpm deploy` closure under
+ * `<resources>/dsh`, carried outside the asar because the spawned bundled
+ * Node is a real OS process that cannot read asar virtual paths); there
+ * `rootDir` is Electron's `process.resourcesPath`. Electron's embedded Node
+ * does not satisfy the engines range, so `ELECTRON_RUN_AS_NODE` is not an
+ * option.
  * @param mode - dev launches the checkout, packaged launches the bundled runtime.
- * @param rootDir - dev: the repository checkout root; packaged: the desktop app root.
+ * @param rootDir - dev: the repository checkout root; packaged: the Electron resources root.
  * @param platform - host platform; defaults to the running process.
  * @returns the launch triple for {@link startServer}.
  */
@@ -49,21 +53,7 @@ export function resolveDshRuntime(
   }
   return {
     command: join(rootDir, PACKAGED_RUNTIME_DIR, platform === 'win32' ? 'node.exe' : 'node'),
-    baseArgs: [resolvePackagedDshBin(rootDir)],
+    baseArgs: [join(rootDir, PACKAGED_DSH_DIR, ...PACKAGED_DSH_BIN)],
     env: {},
   }
-}
-
-/**
- * Locate the installed `@deepseek-ai/dsh` bin entry relative to a root.
- * @param rootDir - directory whose package resolution scope carries the dsh package.
- * @returns absolute path of the dsh bin JavaScript entry.
- */
-function resolvePackagedDshBin(rootDir: string): string {
-  const require = createRequire(join(rootDir, 'package.json'))
-  const manifestPath = require.resolve('@deepseek-ai/dsh/package.json')
-  const manifest = require(manifestPath) as { bin?: Record<string, string> }
-  const entry = manifest.bin?.dsh
-  if (entry === undefined) throw new Error('dsh-desktop: @deepseek-ai/dsh declares no dsh bin')
-  return join(dirname(manifestPath), entry)
 }

@@ -46,16 +46,31 @@ while iterating on dsh itself:
 DSH_DESKTOP_URL='http://127.0.0.1:3080/?token=…' pnpm --filter @deepseek-ai/dsh-desktop run dev
 ```
 
-## Packaging (planned)
+## Packaging
 
-The packaged distribution bundles a standalone Node runtime (`extraResources`,
-asar-unpacked) plus the same-version `@deepseek-ai/dsh` package, because
-Electron's embedded Node does not satisfy the dsh engines range and
-`ELECTRON_RUN_AS_NODE` is therefore not an option. The electron-builder
-configuration is the next work item; `resolveDshRuntime('packaged', …)`
-already resolves that layout. See `PLAN.md` for the full roadmap, including
-the stage-two IPC fetch/stream carrier that removes the loopback HTTP hop
-between the renderer and dsh.
+```sh
+pnpm --filter @deepseek-ai/dsh-desktop run package:dir   # unpacked distribution under release/win-unpacked
+```
+
+Two runtime inputs are assembled into `extraResources` before electron-builder
+runs (`packaging/prepare-runtime.mjs`):
+
+- `runtime/`: the standalone Node binary (npmmirror mirror first, nodejs.org
+  as fallback; version overridable via `DSH_DESKTOP_NODE_VERSION`).
+- `dsh-runtime/`: the dsh production closure, produced by walking the
+  workspace link graph from `apps/cli` (manifest production dependencies
+  only) and copying each reachable unit while preserving relative links —
+  the closure resolves exactly like the checkout. `pnpm deploy` is not
+  usable here: its legacy output drops transitive `.pnpm` entries at this
+  workspace size.
+
+electron-builder packs only the compiled entry and static window assets into
+`app.asar`; the dsh closure and Node runtime travel outside the asar because
+the spawned Node is a real OS process. Native modules are **not** rebuilt for
+Electron (`npmRebuild: false`): the dsh tree runs under the bundled stock
+Node, and nothing in the Electron main process requires native modules. The
+unpacked distribution is verified end-to-end on Windows; the NSIS installer
+target is the remaining packaging work item.
 
 ## Verification
 

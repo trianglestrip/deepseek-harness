@@ -1,12 +1,10 @@
-import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { resolveDshRuntime } from '../src/dsh-runtime'
 
-/** This spec lives at apps/desktop/tests/: one level up is the desktop app root, three the checkout root. */
-const appRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
-const repoRoot = join(appRoot, '..', '..')
+/** This spec lives at apps/desktop/tests/, three levels below the checkout root. */
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 
 describe('resolveDshRuntime', () => {
   it('resolves the dev checkout launcher through tsx', () => {
@@ -18,17 +16,13 @@ describe('resolveDshRuntime', () => {
   })
 
   it('resolves the packaged launcher to the bundled Node runtime', () => {
-    expect(resolveDshRuntime('packaged', appRoot, 'win32').command).toBe(join(appRoot, 'runtime', 'node.exe'))
-    expect(resolveDshRuntime('packaged', appRoot, 'linux').command).toBe(join(appRoot, 'runtime', 'node'))
-    expect(resolveDshRuntime('packaged', appRoot, 'darwin').command).toBe(join(appRoot, 'runtime', 'node'))
+    expect(resolveDshRuntime('packaged', 'R', 'win32').command).toBe(join('R', 'runtime', 'node.exe'))
+    expect(resolveDshRuntime('packaged', 'R', 'linux').command).toBe(join('R', 'runtime', 'node'))
+    expect(resolveDshRuntime('packaged', 'R', 'darwin').command).toBe(join('R', 'runtime', 'node'))
   })
 
-  it('resolves the packaged dsh bin from the app dependency scope', () => {
-    const bin = resolveDshRuntime('packaged', appRoot, 'linux').baseArgs[0]
-    expect(bin).toBeDefined()
-    expect(bin.endsWith(join('lib', 'bin.js'))).toBe(true)
-    // The workspace link and the built CLI lib behind it prove the resolution
-    // scope is the app's own node_modules — the same layout packaging produces.
-    expect(existsSync(bin)).toBe(true)
+  it('resolves the packaged dsh entry inside the deployed closure', () => {
+    expect(resolveDshRuntime('packaged', 'R', 'linux').baseArgs).toEqual([join('R', 'dsh', 'apps', 'cli', 'lib', 'bin.js')])
+    expect(resolveDshRuntime('packaged', 'R', 'win32').baseArgs).toEqual([join('R', 'dsh', 'apps', 'cli', 'lib', 'bin.js')])
   })
 })
