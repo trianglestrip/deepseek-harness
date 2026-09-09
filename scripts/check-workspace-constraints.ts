@@ -61,6 +61,9 @@ const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   // (dist/preview.html and dist/preview/) backs private experimental
   // packages and is not published.
   '@deepseek-ai/dsh-web-frontend': ['dist', '!dist/**/*.map', '!dist/preview.html', '!dist/preview'],
+  // The Electron shell ships its compiled main/preload entry and static
+  // window assets; runtime downloads (Node, Electron) are packaging-time.
+  '@deepseek-ai/dsh-desktop': ['dist'],
 }
 
 /** The subset of package.json fields this constraint check cares about. */

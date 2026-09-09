@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>DeepSeek Harness Desktop</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 90vh;
+      background: #1b1b1f;
+      color: #e8e8ea;
+    }
+    main { max-width: 640px; padding: 2rem; text-align: center; }
+    h1 { font-size: 1.2rem; font-weight: 600; }
+    p { color: #a8a8b0; white-space: pre-wrap; word-break: break-word; }
+    button {
+      margin-top: 1.5rem;
+      padding: 0.5rem 1.5rem;
+      font-size: 1rem;
+      border: 1px solid #4a4a52;
+      border-radius: 6px;
+      background: #2a2a30;
+      color: #e8e8ea;
+      cursor: pointer;
+    }
+    button:hover { background: #35353c; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>DeepSeek Harness Desktop</h1>
+    <p id="message"></p>
+    <button id="restart" hidden>Restart the dsh server</button>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.hash.slice(1))
+    const reason = params.get('reason')
+    document.getElementById('message').textContent = reason ?? params.get('state') ?? ''
+    if (reason !== null) document.getElementById('restart').hidden = false
+    document.getElementById('restart').addEventListener('click', () => {
+      window.electronAPI?.restartDsh()
+    })
+  </script>
+</body>
+</html>
