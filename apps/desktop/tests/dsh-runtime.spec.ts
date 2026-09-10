@@ -7,12 +7,17 @@ import { resolveDshRuntime } from '../src/dsh-runtime'
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 
 describe('resolveDshRuntime', () => {
-  it('resolves the dev checkout launcher through tsx', () => {
-    const runtime = resolveDshRuntime('dev', repoRoot, 'linux')
-    expect(runtime.command).toBe('node')
-    expect(runtime.baseArgs).toEqual(['--import', 'tsx/esm', join(repoRoot, 'apps', 'cli', 'src', 'bin.ts')])
-    expect(runtime.cwd).toBe(repoRoot)
-    expect(runtime.env).toEqual({})
+  it('resolves the dev launcher to the built checkout CLI under plain Node', () => {
+    process.env.DSH_HOME = 'H'
+    try {
+      const runtime = resolveDshRuntime('dev', repoRoot, 'linux')
+      expect(runtime.command).toBe('node')
+      expect(runtime.baseArgs).toEqual([join(repoRoot, 'apps', 'cli', 'lib', 'bin.js')])
+      expect(runtime.cwd).toBe(repoRoot)
+      expect(runtime.env).toEqual({ NODE_COMPILE_CACHE: join('H', 'compile-cache') })
+    } finally {
+      delete process.env.DSH_HOME
+    }
   })
 
   it('resolves the packaged launcher to the bundled Node runtime', () => {

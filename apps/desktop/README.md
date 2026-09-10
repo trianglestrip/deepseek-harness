@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness Desktop: an Electron shell that supervises `dsh --profile web`.
+DeepSeek Harness Desktop: an Electron shell that supervises `dsh --profile desktop`.
 
 The shell is a supervisor, not an application launcher: it spawns the checkout's
 `dsh` CLI (dev) or the bundled same-version `@deepseek-ai/dsh` (packaged) and
@@ -13,8 +13,8 @@ modified by the shell; browser authentication stays fully intact.
 
 ```
 Electron main (src/main.ts)
-  ├─ resolveDshRuntime (src/dsh-runtime.ts)     dev: node + tsx + checkout CLI · packaged: bundled Node + dsh bin
-  ├─ startServer (src/server-process.ts)        spawn --profile web --no-open --port 0 (no shell)
+  ├─ resolveDshRuntime (src/dsh-runtime.ts)     dev: node + built checkout CLI · packaged: bundled Node + dsh bin
+  ├─ startServer (src/server-process.ts)        spawn --profile desktop --no-open --port 0 (no shell)
   │    ├─ parseLaunchLine                       readiness = the `dsh web: <url>` stdout line (?token=…)
   │    └─ buildTreeKillArgs                     win32: taskkill /T /F · POSIX: detached process-group kill
   ├─ BrowserWindow.loadURL(authenticatedUrl)    the ?token= → cookie exchange happens in the navigation
@@ -24,8 +24,17 @@ Electron main (src/main.ts)
 
 - **Port 0**: the OS picks a free port; the real URL arrives on the readiness
   line, which web-app prints exactly once after its plugin tree settles.
+- **Built CLI in every mode**: both launches run `apps/cli/lib/bin.js` under
+  plain Node — the tsx source-launch hook re-transforms the tree on every boot
+  (~45s here); a missing built entry lands on the error page with the fix.
+  Run `pnpm run build` before `dev`.
+- **Desktop-first profile**: the shell boots the `desktop` profile when it
+  exists in the Harness home — same bundles as `web` without the home's MCP
+  rows, so dsh does not wait on stdio MCP servers at startup. `DSH_DESKTOP_PROFILE`
+  overrides; without a `desktop` profile the shell falls back to the shipped
+  `web`.
 - **No fixed sleep**: the window navigates when the server announces readiness,
-  with a 60s ceiling; failures land on a local error page with a restart button.
+  with a 180s ceiling; failures land on a local error page with a restart button.
 - **No orphan processes**: teardown kills the whole dsh process tree, not just
   one pid — `exec` + `kill` left zombie servers holding the port.
 

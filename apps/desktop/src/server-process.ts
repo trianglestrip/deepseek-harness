@@ -26,6 +26,8 @@ export interface ServerHandle {
 export interface StartServerOptions {
   /** Port passed to `--port`; 0 lets the OS pick a free one. */
   port: number
+  /** Named profile under `$DSH_HOME/profiles` to boot. */
+  profile: string
 }
 
 /** The readiness line dsh web prints once the server can serve (web-app's supervisor signal). */
@@ -80,7 +82,7 @@ export function buildTreeKillArgs(
  * @returns the handle for readiness, exit, and teardown.
  */
 export function startServer(runtime: DshRuntime, options: StartServerOptions): ServerHandle {
-  const child = spawn(runtime.command, [...runtime.baseArgs, '--profile', 'web', '--no-open', '--port', String(options.port)], {
+  const child = spawn(runtime.command, [...runtime.baseArgs, '--profile', options.profile, '--no-open', '--port', String(options.port)], {
     cwd: runtime.cwd,
     env: { ...process.env, ...runtime.env },
     stdio: ['ignore', 'pipe', 'pipe'],

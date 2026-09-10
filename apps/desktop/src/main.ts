@@ -1,4 +1,6 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { acquireSingleInstance, installExitHooks, watchForCrash } from './app-lifecycle'
@@ -9,6 +11,23 @@ import { startServer, type ServerHandle } from './server-process'
 const DEFAULT_PORT = 0
 /** Upper bound on dsh boot (MCP/plugin initialization can be slow on a cold home). */
 const READY_TIMEOUT_MS = 180_000
+/**
+ * The desktop-first profile: same bundles as `web` without the home's MCP
+ * rows, so dsh boots without waiting on stdio MCP servers. Falls back to
+ * `web` when the profile has not been initialized.
+ */
+const DEFAULT_PROFILE = 'desktop'
+
+/**
+ * Pick the profile to boot: an explicit `DSH_DESKTOP_PROFILE` wins, then the
+ * desktop profile when it exists in the Harness home, then the shipped `web`.
+ */
+function resolveProfile(): string {
+  const override = process.env.DSH_DESKTOP_PROFILE
+  if (override !== undefined && override !== '') return override
+  const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+  return existsSync(join(home, 'profiles', DEFAULT_PROFILE)) ? DEFAULT_PROFILE : 'web'
+}
 /**
  * Attach mode for development: load an already-running dsh web URL instead of
  * spawning one. Set DSH_DESKTOP_URL=http://127.0.0.1:3080/?token=… to iterate
@@ -70,7 +89,13 @@ async function launch(): Promise<void> {
       app.isPackaged ? 'packaged' : 'dev',
       app.isPackaged ? process.resourcesPath : rootDir,
     )
-    const handle = startServer(runtime, { port: DEFAULT_PORT })
+    // Both launch modes run the built CLI; a missing entry means the checkout
+    // was not built (or the closure deployment is broken). Fail with the fix.
+    const dshEntry = runtime.baseArgs[0]
+    if (dshEntry === undefined || !existsSync(dshEntry)) {
+      throw new Error(`the built dsh CLI is missing at ${String(dshEntry)}; run "pnpm run build" in the checkout first.`)
+    }
+    const handle = startServer(runtime, { port: DEFAULT_PORT, profile: resolveProfile() })
     server = handle
     installExitHooks(handle)
     watchForCrash(handle, (reason) => {
