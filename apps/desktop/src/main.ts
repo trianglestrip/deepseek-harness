@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { acquireSingleInstance, installExitHooks, watchForCrash } from './app-lifecycle'
@@ -7,8 +7,8 @@ import { startServer, type ServerHandle } from './server-process'
 
 /** 0 lets the OS pick a free port; the readiness line carries the real one. */
 const DEFAULT_PORT = 0
-/** Upper bound on dsh boot (profile init on a cold home can be slow). */
-const READY_TIMEOUT_MS = 60_000
+/** Upper bound on dsh boot (MCP/plugin initialization can be slow on a cold home). */
+const READY_TIMEOUT_MS = 180_000
 /**
  * Attach mode for development: load an already-running dsh web URL instead of
  * spawning one. Set DSH_DESKTOP_URL=http://127.0.0.1:3080/?token=… to iterate
@@ -30,6 +30,9 @@ function errorPageUrl(params: Record<string, string>): string {
 }
 
 function createWindow(): void {
+  // No application menu at all: the shell is a plain window frame around the
+  // web UI, so Windows' default File/Edit menu is never created.
+  Menu.setApplicationMenu(null)
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -41,7 +44,7 @@ function createWindow(): void {
       preload: join(__dirname, 'preload.js'),
     },
   })
-  mainWindow.once('ready-to-show', () => { mainWindow?.show() })
+  mainWindow.on('ready-to-show', () => { mainWindow?.show() })
   mainWindow.on('closed', () => { mainWindow = null })
 }
 

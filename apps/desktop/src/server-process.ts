@@ -84,6 +84,7 @@ export function startServer(runtime: DshRuntime, options: StartServerOptions): S
     cwd: runtime.cwd,
     env: { ...process.env, ...runtime.env },
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: false,
     detached: process.platform !== 'win32',
     windowsHide: true,
   })
