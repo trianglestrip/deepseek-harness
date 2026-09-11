@@ -84,6 +84,14 @@ const queue = [
 ]
 const copiedUnits = new Set()
 
+/** Unit-top-level src/tests are build inputs the runtime never reads. */
+function isUnitTopLevelBuildDir(source, unit) {
+  const rel = relative(unit, source)
+  if (rel === '' || rel.startsWith('..')) return false
+  const top = rel.split(sep)[0]
+  return top === 'src' || top === 'tests'
+}
+
 /**
  * Map a realpath inside the checkout to the copyable unit directory that
  * carries it: a .pnpm hash dir for external packages, a vendor package for
@@ -166,7 +174,12 @@ while (queue.length > 0) {
   const unit = queue.pop()
   if (copiedUnits.has(unit)) continue
   copiedUnits.add(unit)
-  cpSync(unit, join(closureDir, relative(repoRoot, unit)), { recursive: true })
+  cpSync(unit, join(closureDir, relative(repoRoot, unit)), {
+    recursive: true,
+    // Unit-top-level src/tests are build inputs the runtime never reads;
+    // every file in the closure is a file the OS may scan at spawn time.
+    filter: (source) => !isUnitTopLevelBuildDir(source, unit),
+  })
   for (const link of dependencyLinks(unit)) {
     const linkDestination = join(closureDir, relative(repoRoot, link))
     let real

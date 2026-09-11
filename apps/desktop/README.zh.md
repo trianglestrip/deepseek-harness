@@ -23,6 +23,7 @@ Electron main (src/main.ts)
 - **所有模式都跑构建产物**：两种启动都经普通 Node 运行 `apps/cli/lib/bin.js`——tsx 源码启动钩子每次 boot 都要重新转换整棵树（本机约 45s）；构建产物缺失会落到错误页并给出修复指引。`dev` 前先 `pnpm run build`。
 - **desktop 优先 profile**：home 中存在 `desktop` profile 时壳会启动它——与 `web` 相同的 bundle 但不带 home 的 MCP 行，dsh 启动不再等待 stdio MCP 服务器。`DSH_DESKTOP_PROFILE` 可覆盖；没有 `desktop` profile 时回退到随附的 `web`。
 - **boot 与窗口栈重叠**：dsh 的 spawn 发生在 Electron 构建窗口之前，插件树启动与壳自身初始化并行；加载页在本地自计时经过秒数（无 IPC）。
+- **默认常驻**：关闭窗口只是隐藏——受监督的服务器与已鉴权会话保持温热，重新打开即秒进。托盘图标提供 Show / Restart dsh / Quit；设 `DSH_DESKTOP_RESIDENT=0` 恢复关窗即退。
 - **无固定 sleep**：窗口在服务器宣告就绪时才导航，上限 180 秒；失败落到本地错误页并提供重启按钮。
 - **无孤儿进程**：终止时杀掉整棵 dsh 进程树而非单个 pid——`exec` + `kill` 的旧实现会留下占住端口的僵尸服务器。
 

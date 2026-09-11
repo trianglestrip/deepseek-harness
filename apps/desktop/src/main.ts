@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, ipcMain } from 'electron'
+import { app, BrowserWindow, Menu, Tray, ipcMain } from 'electron'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -66,6 +66,13 @@ function createWindow(): void {
   })
   mainWindow.on('ready-to-show', () => { mainWindow?.show() })
   mainWindow.on('closed', () => { mainWindow = null })
+  // Resident mode: a window close is a hide — the supervised server and the
+  // authenticated session stay warm for the next open.
+  mainWindow.on('close', (event) => {
+    if (!RESIDENT || quitting) return
+    event.preventDefault()
+    mainWindow?.hide()
+  })
 }
 
 /**
@@ -108,6 +115,42 @@ function beginServerLaunch(): void {
 }
 
 /**
+ * Closing the window hides it and keeps the supervised server running; the
+ * tray icon is the way back in and the only real exit. A re-open therefore
+ * costs nothing: the ready server and the authenticated cookie session are
+ * both still alive.
+ */
+const RESIDENT = process.env.DSH_DESKTOP_RESIDENT !== '0'
+let tray: Tray | null = null
+let quitting = false
+
+/** Build the tray after the window exists; it is the resident-mode control surface. */
+async function createTray(): Promise<void> {
+  // The running executable's own icon keeps the tray honest in both faces
+  // (electron.exe in dev, the product icon when packaged) with no assets.
+  const icon = await app.getFileIcon(process.execPath, { size: 'normal' })
+  tray = new Tray(icon)
+  tray.setToolTip('DeepSeek Harness Desktop')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show', click: () => { showMainWindow() } },
+    { label: 'Restart dsh', click: () => { void restart() } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { quitting = true; app.quit() } },
+  ]))
+  tray.on('double-click', () => { showMainWindow() })
+}
+
+function showMainWindow(): void {
+  if (mainWindow === null) {
+    createWindow()
+    void launch()
+    return
+  }
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+/**
  * Navigate the window to the running server's authenticated URL. The
  * token-to-cookie exchange happens in the browser navigation itself; no
  * dsh-side state is touched.
@@ -121,6 +164,12 @@ async function launch(): Promise<void> {
       await mainWindow?.loadURL(externalUrl)
       return
     }
+    // Warm path: a resident server is already serving; the window's cookie
+    // jar still holds the authenticated session, so navigate straight there.
+    if (server !== null && readyPromise === null && lastReadyUrl !== null) {
+      await mainWindow?.loadURL(lastReadyUrl)
+      return
+    }
     if (server === null || readyPromise === null) beginServerLaunch()
     const handle = server
     const pending = readyPromise
@@ -132,6 +181,8 @@ async function launch(): Promise<void> {
       await handle?.stop()
       return
     }
+    // Consumed; a later launch takes the warm path above.
+    readyPromise = null
     lastReadyUrl = url
     await mainWindow?.loadURL(url)
   } catch (error) {
@@ -167,17 +218,17 @@ if (!gotLock) {
   beginServerLaunch()
   void app.whenReady().then(() => {
     createWindow()
+    void createTray()
     void launch()
   })
 }
 
 app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow()
-    void launch()
-  }
+  showMainWindow()
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // Resident mode keeps the process (and the supervised server) alive with
+  // no window; the tray's Quit is the real exit.
+  if (!RESIDENT && process.platform !== 'darwin') app.quit()
 })

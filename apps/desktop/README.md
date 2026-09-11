@@ -36,6 +36,10 @@ Electron main (src/main.ts)
 - **Boot overlaps the window stack**: the dsh spawn happens before Electron
   builds its window, so the plugin-tree boot runs inside the shell's own
   initialization; the loading page ticks elapsed seconds locally (no IPC).
+- **Resident by default**: closing the window hides it — the supervised
+  server and the authenticated session stay warm, so re-opening is instant.
+  The tray icon offers Show / Restart dsh / Quit; set
+  `DSH_DESKTOP_RESIDENT=0` for close-to-exit.
 - **No fixed sleep**: the window navigates when the server announces readiness,
   with a 180s ceiling; failures land on a local error page with a restart button.
 - **No orphan processes**: teardown kills the whole dsh process tree, not just
