@@ -37,6 +37,7 @@ const externalUrl = process.env.DSH_DESKTOP_URL
 
 let mainWindow: BrowserWindow | null = null
 let server: ServerHandle | null = null
+let readyPromise: Promise<string> | null = null
 let launching = false
 let lastReadyUrl: string | null = null
 
@@ -68,12 +69,51 @@ function createWindow(): void {
 }
 
 /**
- * Start one supervised dsh web server and navigate the window to its
- * authenticated URL. The token-to-cookie exchange happens in the browser
- * navigation itself; no dsh-side state is touched.
+ * Spawn the supervised dsh server as early as possible. The multi-second
+ * plugin-tree boot then runs while Electron is still building its window
+ * stack; launch() only awaits the already-running readiness instead of
+ * starting the clock after app ready. Neither `app.isPackaged` nor
+ * `process.resourcesPath` needs the ready event.
+ */
+function beginServerLaunch(): void {
+  if (externalUrl !== undefined || server !== null || readyPromise !== null) return
+  const runtime = resolveDshRuntime(
+    app.isPackaged ? 'packaged' : 'dev',
+    app.isPackaged ? process.resourcesPath : rootDir,
+  )
+  // Both launch modes run the built CLI; a missing entry means the checkout
+  // was not built (or the closure deployment is broken). Fail with the fix.
+  const dshEntry = runtime.baseArgs[0]
+  if (dshEntry === undefined || !existsSync(dshEntry)) {
+    readyPromise = Promise.reject(new Error(`the built dsh CLI is missing at ${String(dshEntry)}; run "pnpm run build" in the checkout first.`))
+    readyPromise.catch(() => { /* launch() awaits this same promise and owns the error page */ })
+    return
+  }
+  const handle = startServer(runtime, { port: DEFAULT_PORT, profile: resolveProfile() })
+  server = handle
+  installExitHooks(handle)
+  watchForCrash(handle, (reason) => {
+    if (server === handle) server = null
+    if (readyPromise !== null) {
+      // The awaited promise rejects with the same story; drop the slot so a
+      // follow-up launch starts a fresh server instead of re-reading it.
+      const spent = readyPromise
+      readyPromise = null
+      spent.catch(() => { /* the crash page below already carries the reason */ })
+    }
+    void mainWindow?.loadURL(errorPageUrl({ reason }))
+  })
+  readyPromise = handle.waitForReady(READY_TIMEOUT_MS)
+  readyPromise.catch(() => { /* launch() awaits this same promise and owns the error page */ })
+}
+
+/**
+ * Navigate the window to the running server's authenticated URL. The
+ * token-to-cookie exchange happens in the browser navigation itself; no
+ * dsh-side state is touched.
  */
 async function launch(): Promise<void> {
-  if (launching || server !== null) return
+  if (launching) return
   launching = true
   try {
     if (externalUrl !== undefined) {
@@ -81,31 +121,15 @@ async function launch(): Promise<void> {
       await mainWindow?.loadURL(externalUrl)
       return
     }
-    await mainWindow?.loadURL(errorPageUrl({ state: 'Starting the dsh web server…' }))
-    // Dev resolves the checkout CLI from the repository root; packaged
-    // resolves the deployed dsh closure and bundled Node from the
-    // Electron resources root.
-    const runtime = resolveDshRuntime(
-      app.isPackaged ? 'packaged' : 'dev',
-      app.isPackaged ? process.resourcesPath : rootDir,
-    )
-    // Both launch modes run the built CLI; a missing entry means the checkout
-    // was not built (or the closure deployment is broken). Fail with the fix.
-    const dshEntry = runtime.baseArgs[0]
-    if (dshEntry === undefined || !existsSync(dshEntry)) {
-      throw new Error(`the built dsh CLI is missing at ${String(dshEntry)}; run "pnpm run build" in the checkout first.`)
-    }
-    const handle = startServer(runtime, { port: DEFAULT_PORT, profile: resolveProfile() })
-    server = handle
-    installExitHooks(handle)
-    watchForCrash(handle, (reason) => {
-      server = null
-      void mainWindow?.loadURL(errorPageUrl({ reason }))
-    })
-    const url = await handle.waitForReady(READY_TIMEOUT_MS)
-    if (server !== handle) {
+    if (server === null || readyPromise === null) beginServerLaunch()
+    const handle = server
+    const pending = readyPromise
+    const loadingNavigation = mainWindow?.loadURL(errorPageUrl({ state: 'Starting the dsh web server…' }))
+    const url = await (pending ?? Promise.reject(new Error('the dsh server is not starting.')))
+    await loadingNavigation
+    if (handle === null || server !== handle) {
       // A restart superseded this launch; retire its server.
-      await handle.stop()
+      await handle?.stop()
       return
     }
     lastReadyUrl = url
@@ -122,7 +146,9 @@ async function launch(): Promise<void> {
 async function restart(): Promise<void> {
   const stale = server
   server = null
+  readyPromise = null
   if (stale !== null) await stale.stop()
+  beginServerLaunch()
   await launch()
 }
 
@@ -136,6 +162,9 @@ const gotLock = acquireSingleInstance(() => {
 if (!gotLock) {
   app.quit()
 } else {
+  // The dsh boot is the long pole; start it before Electron builds the
+  // window stack so the two initializations overlap.
+  beginServerLaunch()
   void app.whenReady().then(() => {
     createWindow()
     void launch()

@@ -33,6 +33,9 @@ Electron main (src/main.ts)
   rows, so dsh does not wait on stdio MCP servers at startup. `DSH_DESKTOP_PROFILE`
   overrides; without a `desktop` profile the shell falls back to the shipped
   `web`.
+- **Boot overlaps the window stack**: the dsh spawn happens before Electron
+  builds its window, so the plugin-tree boot runs inside the shell's own
+  initialization; the loading page ticks elapsed seconds locally (no IPC).
 - **No fixed sleep**: the window navigates when the server announces readiness,
   with a 180s ceiling; failures land on a local error page with a restart button.
 - **No orphan processes**: teardown kills the whole dsh process tree, not just

@@ -38,8 +38,22 @@
   <script>
     const params = new URLSearchParams(location.hash.slice(1))
     const reason = params.get('reason')
-    document.getElementById('message').textContent = reason ?? params.get('state') ?? ''
-    if (reason !== null) document.getElementById('restart').hidden = false
+    const message = document.getElementById('message')
+    if (reason !== null) {
+      document.getElementById('restart').hidden = false
+      message.textContent = reason
+    } else {
+      // Local elapsed counter: the boot takes seconds and a static line
+      // reads as a hang. No IPC — the page ticks on its own.
+      const state = params.get('state') ?? ''
+      const started = Date.now()
+      const render = () => {
+        const seconds = Math.floor((Date.now() - started) / 1000)
+        message.textContent = seconds === 0 ? state : state + ' (' + String(seconds) + 's)'
+      }
+      render()
+      setInterval(render, 1000)
+    }
     document.getElementById('restart').addEventListener('click', () => {
       window.electronAPI?.restartDsh()
     })
