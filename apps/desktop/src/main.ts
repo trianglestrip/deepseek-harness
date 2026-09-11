@@ -43,6 +43,11 @@ let lastReadyUrl: string | null = null
 
 // Both source (tsx) and built (tsc) entries sit directly under apps/desktop.
 const rootDir = join(__dirname, '..', '..', '..')
+const bootT0 = Date.now()
+/** One-line boot-phase timing to stderr; the console supervisor story for cold starts. */
+function bootLog(stage: string): void {
+  console.error(`[desktop] ${stage} at ${((Date.now() - bootT0) / 1000).toFixed(1)}s`)
+}
 
 function errorPageUrl(params: Record<string, string>): string {
   const search = new URLSearchParams(params).toString()
@@ -97,6 +102,7 @@ function beginServerLaunch(): void {
     return
   }
   const handle = startServer(runtime, { port: DEFAULT_PORT, profile: resolveProfile() })
+  bootLog('server spawned')
   server = handle
   installExitHooks(handle)
   watchForCrash(handle, (reason) => {
@@ -184,7 +190,9 @@ async function launch(): Promise<void> {
     // Consumed; a later launch takes the warm path above.
     readyPromise = null
     lastReadyUrl = url
+    bootLog('server ready, navigating')
     await mainWindow?.loadURL(url)
+    bootLog('window navigated')
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     if (mainWindow !== null) await mainWindow.loadURL(errorPageUrl({ reason }))
