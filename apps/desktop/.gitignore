@@ -4,5 +4,6 @@ release/
 packaging/runtime/
 packaging/deploy-tmp/
 packaging/dsh-runtime/
+src-tauri/target/
 *.log
 .DS_Store

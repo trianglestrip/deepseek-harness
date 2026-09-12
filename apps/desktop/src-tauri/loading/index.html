@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>DeepSeek Harness Desktop</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 90vh;
+      background: #1b1b1f;
+      color: #e8e8ea;
+      margin: 0;
+    }
+    main { max-width: 640px; padding: 2rem; text-align: center; }
+    h1 { font-size: 1.2rem; font-weight: 600; }
+    p { color: #a8a8b0; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>DeepSeek Harness Desktop</h1>
+    <p id="message">Starting the dsh web server…</p>
+  </main>
+  <script>
+    const started = Date.now()
+    const render = () => {
+      const seconds = Math.floor((Date.now() - started) / 1000)
+      document.getElementById('message').textContent =
+        'Starting the dsh web server…' + (seconds === 0 ? '' : ' (' + String(seconds) + 's)')
+    }
+    render()
+    setInterval(render, 1000)
+  </script>
+</body>
+</html>

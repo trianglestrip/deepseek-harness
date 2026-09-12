@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui/nicegui/main/tauri/tauri.conf.json",
+  "productName": "DeepSeek Harness Desktop",
+  "version": "0.1.3-alpha.1",
+  "identifier": "ai.deepseek.dsh.desktop",
+  "build": {
+    "frontendDist": "./loading"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "DeepSeek Harness Desktop",
+        "width": 1400,
+        "height": 900,
+        "url": "index.html"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": []
+  }
+}

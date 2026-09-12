@@ -16,14 +16,16 @@
   ],
   "scripts": {
     "dev": "tsx src/main.ts",
+    "dev:tauri": "tauri dev",
     "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/window', 'dist/window', { recursive: true })\"",
+    "build:tauri": "tauri build",
     "start": "electron .",
     "package:dir": "node packaging/prepare-runtime.mjs && electron-builder --dir",
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": {},
   "devDependencies": {
     "@deepseek-ai/dsh": "workspace:^",
+    "@tauri-apps/cli": "2.11.4",
     "@types/node": "^22.0.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
