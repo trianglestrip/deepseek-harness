@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-10-desktop-built-cli-boot-and-compile-cache.md
-2026-09-10-desktop-built-cli-boot-and-compile-cache.md: 305a35a33288e0e8dbfbfb755237a9f523566a4f
-2026-09-10-desktop-built-cli-boot-and-compile-cache.zh.md: 16e9b59969744d5257f1f1cbe90550c8be0964dd
+2026-09-10-desktop-built-cli-boot-and-compile-cache.md: e9c8615463b022755601a5987b34d0b2b02ab680
+2026-09-10-desktop-built-cli-boot-and-compile-cache.zh.md: dda3b43f0094f7b4d4a7c68ed8856879f3b5858e
