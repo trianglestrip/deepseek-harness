@@ -12,7 +12,7 @@ Status: implemented
 
 `apps/desktop` 是由 Tauri 2 构建的 Rust 二进制，源码位于 `apps/desktop/src-tauri/`。它在操作系统自带的 WebView2 中渲染同一套 harness web GUI，监督模型保持不变，且不发布任何 JavaScript 载荷。
 
-- **监督契约不变。** `src-tauri/src/main.rs` spawn `node <checkout>/apps/cli/lib/bin.js`，参数为 `--profile desktop --no-open --port 0`；解析 stdout 中的 `dsh web: <authenticatedUrl>` 行，并让窗口导航到该 URL。`?token=` 换 cookie 的交换仍发生在首次导航内部，如今用的是 WebView2 的 cookie jar。
+- **监督契约作为回退路径存续。** 当应用携带[随附 Host](2026-09-15-desktop-host-carrier.zh.md) 时由 `shell.rs` 引导它；否则由 `supervisor.rs` spawn `node <checkout>/apps/cli/lib/bin.js`，参数为 `--profile desktop --no-open --port 0`；解析 stdout 中的 `dsh web: <authenticatedUrl>` 行，并让窗口导航到该 URL。`?token=` 换 cookie 的交换仍发生在首次导航内部，如今用的是 WebView2 的 cookie jar。
 - **不经 shell，也不改第一方鉴权。** spawn 仍绕过 shell，harness 源码仍不含任何桌面专用的鉴权旁路。
 - **进程树终止沿用同样两种机制。** win32 仍是 `taskkill /pid <pid> /T /F`；POSIX 仍对 detached 子进程的进程组发信号。
 - **窗口与生命周期归托盘管。** 托盘菜单负责 Show、Restart dsh、Quit；关闭窗口只是隐藏，被监督的服务器与已鉴权会话保持常驻；`tauri-plugin-single-instance` 把第二次启动汇聚为聚焦已有窗口。
@@ -32,9 +32,9 @@ Status: implemented
 ## Consequences
 
 - **安装体积缩小了约五十倍。** Tauri 二进制在 debug profile 下测得 13 MB，且不携带浏览器引擎；Electron `--dir` 产物为 686 MiB。仓库尚未构建的 release profile 还要更小。
-- **打包形态退回未构建状态。** Electron 的打包工作——捆绑独立 Node 加 link-graph `@deepseek-ai/dsh` 闭包——随 Electron 源码一并删除。`bundle.active` 为 `false`，所以 `tauri build` 不产出安装器，也不随包分发 runtime。
-- **`NODE_COMPILE_CACHE` 不再到达 dsh。** `spawn_dsh` 不传任何环境变量，Electron 壳曾经种下的 V8 编译缓存因此消失，dsh 在没有它的情况下引导。恢复它就是在 spawn 出的命令上加一次 `env` 调用。
-- **引导基准与解析器单测随 Electron 源码一并删除**：`apps/desktop/bench/boot-bench.mjs`、`apps/desktop/bench/boot-once.mjs` 与 `apps/desktop/tests/*.spec.ts`。因此 `dsh web: ` 就绪行成了跨包契约，却在两个包里都没有测试钉住；在重新覆盖该解析器与就绪行格式之前，web-app 对该行的修改不能称为安全。
-- **POSIX 的进程树终止丢了进程组建置。** `spawn_dsh` 不调用 `process_group(0)`，子进程因此不是进程组组长，`kill_process_tree` 的 `kill(-pid, SIGTERM)` 打向一个并不存在的进程组；Electron 壳那套 3 秒后升级 SIGKILL 也没了。于是在 macOS 或 Linux 上退出可能把 dsh 进程树留在原地并占住端口。
-- **就绪后的崩溃监视与重启入口都没了。** 就绪行之后没有任何东西在观察子进程，`src-tauri/loading/index.html` 也没有 `#restart` 元素可供失败路径的 `hidden = false` 揭示。
+- **打包形态重新接通。** [Host carrier Agent Note](2026-09-15-desktop-host-carrier.zh.md) 恢复了随包运行时：`prepare:runtime`、`prepare:packages`、`prepare:dsh` 与 `prepare:resources` 把 upstream Node.js 可执行文件与已安装的 dsh 闭包放进 `src-tauri/resources/desktop-runtime`，`tauri.conf.json` 打包该目录，壳在回退到监督 CLI 之前会先引导随附 Host。尚未有人测过 release 安装包。
+- **`NODE_COMPILE_CACHE` 再次到达 dsh。** `compile_cache_env` 在两条引导路径上把缓存种在应用缓存目录下。
+- **就绪解析器重新被钉住，从壳这一侧。** `parse_launch_line` 与 `resolve_profile_from` 在 `apps/desktop/src-tauri/src/supervisor.rs` 中带有单测，产出侧仍由 `packages/bundle/web-app/tests/web-app.spec.ts` 钉住。引导基准仍然缺席。
+- **POSIX 终止打向真实存在的进程组。** 两条引导路径在 spawn 前都调用 `process_group(0)`，并在三秒宽限后升级到 SIGKILL，因此在 macOS 或 Linux 上退出不再把 dsh 进程树留在原地占住端口。
+- **就绪后的监视与重启入口都存在。** supervisor 的 watch 只为自己开启的那一代上报退出，加载页从 fragment 渲染失败信息并显示 `#restart`，按钮调用壳的 `restart_dsh`。
 - **壳仍不在 `verify-application-entrypoints` 的分类清单内**（无 `bin`、无 shebang 源、无根 `demo:` 脚本）；改成 Rust 二进制不改变这一点，若日后情况变化，该门禁的分类清单仍是登记之处。

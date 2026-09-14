@@ -17,22 +17,65 @@
     main { max-width: 640px; padding: 2rem; text-align: center; }
     h1 { font-size: 1.2rem; font-weight: 600; }
     p { color: #a8a8b0; white-space: pre-wrap; word-break: break-word; }
+    button {
+      font: inherit;
+      color: #e8e8ea;
+      background: #2f2f36;
+      border: 1px solid #4a4a54;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+    }
+    button:hover { background: #3a3a43; }
   </style>
 </head>
 <body>
   <main>
     <h1>DeepSeek Harness Desktop</h1>
     <p id="message">Starting the dsh web server…</p>
+    <button id="restart" hidden>Restart dsh</button>
   </main>
   <script>
+    const message = document.getElementById('message')
+    const restart = document.getElementById('restart')
     const started = Date.now()
-    const render = () => {
+    let failed = false
+
+    const renderProgress = () => {
+      if (failed) return
       const seconds = Math.floor((Date.now() - started) / 1000)
-      document.getElementById('message').textContent =
+      message.textContent =
         'Starting the dsh web server…' + (seconds === 0 ? '' : ' (' + String(seconds) + 's)')
     }
-    render()
-    setInterval(render, 1000)
+
+    // The shell reports a failed or exited server through the fragment, so the
+    // text survives a reload and a same-document navigation.
+    const renderFragment = () => {
+      const failure = new URLSearchParams(location.hash.slice(1)).get('message')
+      if (failure === null) {
+        failed = false
+        renderProgress()
+        return
+      }
+      failed = true
+      message.textContent = failure
+      restart.hidden = false
+    }
+
+    restart.addEventListener('click', () => {
+      restart.hidden = true
+      failed = false
+      message.textContent = 'Restarting the dsh web server…'
+      window.__TAURI_INTERNALS__.invoke('restart_dsh').catch((error) => {
+        failed = true
+        message.textContent = 'Restart failed: ' + String(error)
+        restart.hidden = false
+      })
+    })
+
+    window.addEventListener('hashchange', renderFragment)
+    renderFragment()
+    setInterval(renderProgress, 1000)
   </script>
 </body>
 </html>
