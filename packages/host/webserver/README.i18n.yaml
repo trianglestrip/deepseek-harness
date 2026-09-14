@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/host/webserver/README.md
 README.md: b91efa19ddde9604b3d17e58769123cbaa5043d0
-README.zh.md: 06cb07dede80e0f4d58f0137a9415e6e40ff4036
+README.zh.md: ed20a86a1f4faa10e80f7b1e6c093d1dc1e5275e
