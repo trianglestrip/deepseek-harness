@@ -1,0 +1,130 @@
+{
+  "protocolVersion": 3,
+  "vectors": [
+    {
+      "name": "request.start",
+      "direction": "request",
+      "hex": "445348330100000007000000647b2275726c223a226473682d6170703a2f2f6170702f696e6465782e68746d6c222c226d6574686f64223a22474554222c2268656164657273223a5b5b22616363657074222c22746578742f68746d6c225d5d2c22686173426f6479223a66616c73657d",
+      "decoded": {
+        "type": "start",
+        "url": "dsh-app://app/index.html",
+        "method": "GET",
+        "headers": [
+          [
+            "accept",
+            "text/html"
+          ]
+        ],
+        "hasBody": false
+      }
+    },
+    {
+      "name": "request.data",
+      "direction": "request",
+      "hex": "4453483302000000070000000d68656c6c6f206465736b746f70",
+      "decoded": {
+        "type": "data",
+        "dataBase64": "aGVsbG8gZGVza3RvcA=="
+      }
+    },
+    {
+      "name": "request.end",
+      "direction": "request",
+      "hex": "44534833030000000700000000",
+      "decoded": {
+        "type": "end"
+      }
+    },
+    {
+      "name": "request.cancel",
+      "direction": "request",
+      "hex": "44534833040000000700000000",
+      "decoded": {
+        "type": "cancel"
+      }
+    },
+    {
+      "name": "request.control.shutdown",
+      "direction": "request",
+      "hex": "445348330500000003000000167b22636f6d6d616e64223a2273687574646f776e227d",
+      "decoded": {
+        "type": "control",
+        "id": 3,
+        "command": "shutdown"
+      }
+    },
+    {
+      "name": "response.start",
+      "direction": "response",
+      "hex": "445348330100000001000000557b22737461747573223a3230302c2268656164657273223a5b5b22636f6e74656e742d74797065222c22746578742f68746d6c3b20636861727365743d7574662d38225d5d2c22686173426f6479223a747275657d",
+      "decoded": {
+        "type": "start",
+        "status": 200,
+        "headers": [
+          [
+            "content-type",
+            "text/html; charset=utf-8"
+          ]
+        ],
+        "hasBody": true
+      }
+    },
+    {
+      "name": "response.data",
+      "direction": "response",
+      "hex": "445348330200000001000000143c68746d6c3e6465736b746f703c2f68746d6c3e",
+      "decoded": {
+        "type": "data",
+        "dataBase64": "PGh0bWw+ZGVza3RvcDwvaHRtbD4="
+      }
+    },
+    {
+      "name": "response.end",
+      "direction": "response",
+      "hex": "44534833030000000100000000",
+      "decoded": {
+        "type": "end"
+      }
+    },
+    {
+      "name": "response.error",
+      "direction": "response",
+      "hex": "4453483304000000010000001c7b226d657373616765223a2268616e646c6572206661696c6564227d",
+      "decoded": {
+        "type": "error",
+        "message": "handler failed"
+      }
+    },
+    {
+      "name": "response.event.ready",
+      "direction": "response",
+      "hex": "4453483305000000000000003f7b226576656e74223a227265616479222c2270726f746f636f6c56657273696f6e223a332c2264736856657273696f6e223a22302e312e352d72632e32227d",
+      "decoded": {
+        "event": "ready",
+        "protocolVersion": 3,
+        "dshVersion": "0.1.5-rc.2"
+      }
+    },
+    {
+      "name": "response.event.fatal",
+      "direction": "response",
+      "hex": "445348330500000000000000307b226576656e74223a22666174616c222c226d657373616765223a22636f6d706f736974696f6e206661696c6564227d",
+      "decoded": {
+        "event": "fatal",
+        "message": "composition failed"
+      }
+    },
+    {
+      "name": "response.controlResult",
+      "direction": "response",
+      "hex": "4453483306000000020000002e7b226964223a322c226f6b223a747275652c2276616c7565223a7b22726573746172746564223a66616c73657d7d",
+      "decoded": {
+        "id": 2,
+        "ok": true,
+        "value": {
+          "restarted": false
+        }
+      }
+    }
+  ]
+}
