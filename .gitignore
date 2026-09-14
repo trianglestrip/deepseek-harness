@@ -6,7 +6,6 @@ lib/
 pnpm-debug.log
 .pnpm-store/
 .cache/
-.codegraph/
 examples/*/*.jsonl
 .storages/
 .sessions/

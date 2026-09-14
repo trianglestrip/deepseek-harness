@@ -70,9 +70,6 @@ const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   // (dist/preview.html and dist/preview/) backs private experimental
   // packages and is not published.
   '@deepseek-ai/dsh-web-frontend': ['dist', '!dist/**/*.map', '!dist/preview.html', '!dist/preview'],
-  // The Tauri shell publishes no JavaScript payload: the loading page and the
-  // Rust shell ship through the platform installer that `tauri build` produces.
-  '@deepseek-ai/dsh-desktop': [],
 }
 
 /** The subset of package.json fields this constraint check cares about. */
