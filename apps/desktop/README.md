@@ -36,9 +36,11 @@ src
 ```sh
 pnpm install
 pnpm run build
-pnpm --filter @deepseek-ai/dsh-desktop run dev        # supervised fallback, built CLI
+pnpm --filter @deepseek-ai/dsh-desktop run dev        # the packaged resource tree
 pnpm --filter @deepseek-ai/dsh-desktop run dev:host   # the packaged path from a linked runtime
 ```
+
+`dev:host` declares no bundle resources (`src-tauri/tauri.dev.conf.json`), because the Tauri build script copies every declared resource into the target directory on each rebuild — 11,674 files for this tree. It points the shell at the linked runtime instead, so a Rust edit costs one compile. `dev` keeps the resource tree and is the run that matches a release.
 
 Requires Node `^22.19 || >=24` and a Rust toolchain with the Tauri 2 prerequisites.
 

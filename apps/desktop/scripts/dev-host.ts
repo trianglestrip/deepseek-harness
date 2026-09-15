@@ -4,6 +4,10 @@
  * The development shell boots the same Host the packaged application does, so
  * the carrier, the invoke commands, and the injected renderer transport are
  * exercised while developing. `scripts/dev-runtime.ts` links the tree first.
+ *
+ * The run declares no bundle resources: the build script copies every declared
+ * resource into the target directory on each rebuild, and the linked tree
+ * supplies them here instead (see `src-tauri/tauri.dev.conf.json`).
  */
 
 import { spawn } from 'node:child_process'
@@ -14,7 +18,10 @@ const DEV_RUNTIME = join(APP_ROOT, '.desktop-build', 'dev-runtime')
 
 await import('./dev-runtime.ts')
 
-const child = spawn('pnpm', ['exec', 'tauri', 'dev'], {
+const child = spawn(
+  'pnpm',
+  ['exec', 'tauri', 'dev', '--config', join('src-tauri', 'tauri.dev.conf.json')],
+  {
   cwd: APP_ROOT,
   stdio: 'inherit',
   shell: process.platform === 'win32',
