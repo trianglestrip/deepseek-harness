@@ -121,11 +121,9 @@ pub async fn updates_check(app: AppHandle) -> UpdateState {
 #[tauri::command]
 pub async fn updates_install(app: AppHandle) -> UpdateState {
     let status = app.state::<UpdateStatus>();
-    let Some(version) = status.current().version else {
-        return status.publish(UpdateState::error(
-            "desktop update: no verified update is available".to_string(),
-            None,
-        ));
+    let version = match requested_install(&status.current()) {
+        Ok(version) => version,
+        Err(state) => return status.publish(state),
     };
     status.publish(UpdateState::installing(version.clone()));
     let Ok(updater) = app.updater() else {
@@ -157,6 +155,21 @@ pub async fn updates_install(app: AppHandle) -> UpdateState {
 #[tauri::command]
 pub fn updates_state(status: tauri::State<'_, UpdateStatus>) -> UpdateState {
     status.current()
+}
+
+/// The release an install applies to: the version the last check announced and
+/// published, or the error state to publish when nothing verified is available.
+///
+/// The install path never downloads a release a check did not announce, which
+/// is what the replaced Electron coordinator guaranteed.
+fn requested_install(current: &UpdateState) -> Result<String, UpdateState> {
+    match &current.version {
+        Some(version) => Ok(version.clone()),
+        None => Err(UpdateState::error(
+            "desktop update: no verified update is available".to_string(),
+            None,
+        )),
+    }
 }
 
 /// Check for updates from the tray and offer the install, as the Electron menu did.
@@ -241,5 +254,21 @@ mod tests {
         let installing = serde_json::to_value(UpdateState::installing("0.2.0".to_string())).unwrap();
         assert_eq!(installing["phase"], "installing");
         assert_eq!(installing["version"], "0.2.0");
+    }
+
+    #[test]
+    fn installs_only_the_release_a_check_announced() {
+        let version = requested_install(&UpdateState::available("0.2.0".to_string())).unwrap();
+        assert_eq!(version, "0.2.0");
+    }
+
+    #[test]
+    fn refuses_an_install_without_an_announced_release() {
+        for current in [UpdateState::idle(), UpdateState::error("check failed".to_string(), None)] {
+            let error = requested_install(&current).unwrap_err();
+            assert_eq!(error.phase, UpdatePhase::Error);
+            assert_eq!(error.message.as_deref(), Some("desktop update: no verified update is available"));
+            assert_eq!(error.version, None);
+        }
     }
 }
