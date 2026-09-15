@@ -21,6 +21,8 @@ const WINDOW_TITLE: &str = "DeepSeek Harness Desktop";
 const WINDOW_SIZE: (f64, f64) = (1400.0, 900.0);
 /// Renderer transport the shell installs before the application document runs.
 const TRANSPORT_SCRIPT: &str = include_str!("../transport/desktop-transport.js");
+/// Desktop API the shell's own and the Host's pages read through `window.dsh`.
+const SHELL_API_SCRIPT: &str = include_str!("../shell-api.js");
 
 /// Build the window and tray, record the loading page, and start the application.
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -35,6 +37,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // The transport is installed here rather than by the Host, whose own
     // injection targets a shell that can stream a protocol response.
     .initialization_script(TRANSPORT_SCRIPT)
+    .initialization_script(SHELL_API_SCRIPT)
     .build()?;
     if let Ok(url) = window.url() {
         handle.state::<AppState>().set_initial_url(url);

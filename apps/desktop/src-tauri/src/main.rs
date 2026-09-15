@@ -7,6 +7,7 @@
 
 mod backend;
 mod host;
+mod locale;
 mod shell;
 mod supervisor;
 
@@ -24,6 +25,7 @@ fn main() {
             shell::restart_dsh,
             backend::backend_status,
             backend::backend_retry,
+            locale::locale_get,
             host::bridge::dsh_request_start,
             host::bridge::dsh_request_body,
             host::bridge::dsh_request_end,

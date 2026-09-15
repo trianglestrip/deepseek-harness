@@ -39,9 +39,8 @@
     </div>
   </main>
   <script type="module">
-    import { resolveLocale } from './locale.js'
-
-    const { messages } = resolveLocale(navigator.language)
+    // `window.dsh` is installed by the shell before this document runs.
+    const { messages } = await window.dsh.locale()
     const title = document.getElementById('title')
     const message = document.getElementById('message')
     const restart = document.getElementById('restart')
@@ -55,7 +54,7 @@
     // so it survives a reload before this command answers.
     const refreshStatus = async () => {
       try {
-        backend = await window.__TAURI_INTERNALS__.invoke('backend_status')
+        backend = await window.dsh.backend.status()
       } catch {
         backend = { phase: 'starting' }
       }
@@ -89,7 +88,7 @@
       restart.hidden = true
       failed = false
       renderProgress()
-      window.__TAURI_INTERNALS__.invoke('backend_retry').catch((error) => {
+      window.dsh.backend.retry().catch((error) => {
         const detail = error === null || error === undefined ? messages.unknownError : String(error)
         title.textContent = messages.startupFailed
         message.textContent = detail
