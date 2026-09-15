@@ -51,6 +51,13 @@ pub fn host_launch(app: &AppHandle) -> Option<HostLaunch> {
         return Some(launch);
     }
     let resource_dir = app.path().resource_dir().ok()?;
+    packaged_host_launch(&resource_dir)
+}
+
+/// Resolve the launch an installed application carries.
+/// @param resource_dir - the application's resources directory.
+/// @returns the launch, or `None` when the runtime or the core is missing.
+fn packaged_host_launch(resource_dir: &Path) -> Option<HostLaunch> {
     let root = resource_dir.join(RUNTIME_DIRECTORY);
     let node = root.join("node").join(node_executable_name());
     let dsh = root.join("dsh");
@@ -79,7 +86,6 @@ fn dev_host_launch() -> Option<HostLaunch> {
     let root = std::env::var("DSH_DESKTOP_DEV_RUNTIME")
         .ok()
         .filter(|value| !value.is_empty())?;
-    let root = PathBuf::from(root);
     let node = match std::env::var("DSH_DESKTOP_DEV_NODE") {
         Ok(value) if !value.is_empty() => PathBuf::from(value),
         _ => PathBuf::from(node_executable_name()),
@@ -88,6 +94,15 @@ fn dev_host_launch() -> Option<HostLaunch> {
         .parent()?
         .join("lib")
         .join(SHELL_CORE_FILE);
+    development_host_launch(PathBuf::from(root), node, entry)
+}
+
+/// Build the launch for a workspace-linked runtime tree.
+/// @param root - directory holding `dsh` and `profile`.
+/// @param node - Node.js executable that runs the core.
+/// @param entry - shell core script; absent trees answer `None`.
+/// @returns the launch a development run uses.
+fn development_host_launch(root: PathBuf, node: PathBuf, entry: PathBuf) -> Option<HostLaunch> {
     if !entry.exists() {
         return None;
     }
@@ -532,5 +547,36 @@ mod tests {
         std::fs::create_dir_all(home.join("profiles").join("desktop")).unwrap();
         assert_eq!(resolve_profile_from(None, &home), "web".to_string());
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn resolves_the_installed_launch_from_the_resources() {
+        let base = std::env::temp_dir().join(format!("dsh-launch-test-{}", std::process::id()));
+        let root = base.join(RUNTIME_DIRECTORY);
+        std::fs::create_dir_all(root.join("node")).unwrap();
+        std::fs::create_dir_all(root.join("dsh")).unwrap();
+        assert!(packaged_host_launch(&base).is_none());
+        std::fs::write(root.join("node").join(node_executable_name()), "").unwrap();
+        std::fs::write(root.join(SHELL_CORE_FILE), "").unwrap();
+        let launch = packaged_host_launch(&base).unwrap();
+        assert!(!launch.allow_linked);
+        assert_eq!(launch.entry, root.join(SHELL_CORE_FILE));
+        assert_eq!(launch.runtime_dir, root.join("dsh"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn resolves_a_linked_development_launch() {
+        let base = std::env::temp_dir().join(format!("dsh-dev-launch-test-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let entry = base.join(SHELL_CORE_FILE);
+        assert!(development_host_launch(base.clone(), PathBuf::from("node"), entry.clone()).is_none());
+        std::fs::write(&entry, "").unwrap();
+        let launch = development_host_launch(base.clone(), PathBuf::from("node"), entry.clone()).unwrap();
+        assert!(launch.allow_linked);
+        assert_eq!(launch.entry, entry);
+        assert_eq!(launch.runtime_dir, base.join("dsh"));
+        assert_eq!(launch.project_dir, base.join("profile"));
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
