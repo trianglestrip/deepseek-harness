@@ -1,27 +1,17 @@
 import { defineConfig } from 'tsdown'
 
-export default defineConfig([
-  {
-    entry: ['lib/types/main.js'],
-    outDir: 'lib',
-    format: ['esm'],
-    platform: 'node',
-    target: 'es2024',
-    fixedExtension: false,
-    dts: false,
-    clean: false,
-    deps: { neverBundle: ['electron'] },
-  },
-  ...(['preload', 'preload-app'] as const).map(name => ({
-    // Sandboxed Electron preloads run as CommonJS even though the application package is ESM.
-    entry: { [name]: `lib/types/${name}.js` },
-    outDir: 'lib',
-    format: ['cjs'] as const,
-    platform: 'node' as const,
-    target: 'es2024',
-    fixedExtension: false,
-    dts: false,
-    clean: false,
-    deps: { neverBundle: ['electron'] },
-  })),
-])
+/**
+ * The shell core is the only runtime program this package ships: the Tauri
+ * shell spawns it under the bundled Node.js executable, and it bundles the
+ * upstream parent half (`host-process.ts`) with the core's own wire codec.
+ */
+export default defineConfig({
+  entry: { 'shell-core': 'lib/types/shell-core.js' },
+  outDir: 'lib',
+  format: ['esm'],
+  platform: 'node',
+  target: 'es2024',
+  fixedExtension: false,
+  dts: false,
+  clean: false,
+})

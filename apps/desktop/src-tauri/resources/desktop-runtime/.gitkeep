@@ -1,2 +1,2 @@
 Prepared by "pnpm --filter @deepseek-ai/dsh-desktop run prepare:resources":
-the upstream Node.js executable, the installed dsh closure, and desktop-transport.js.
+the upstream Node.js executable, the installed dsh closure, and shell-core.js.

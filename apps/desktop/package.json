@@ -23,7 +23,8 @@
     "prepare:resources": "tsx scripts/prepare-tauri-resources.ts",
     "prepare:all": "tsx scripts/prepare-tauri.ts",
     "smoke:host": "tsx scripts/host-smoke.ts",
-    "dev:host": "tsx scripts/dev-host.ts"
+    "dev:host": "tsx scripts/dev-host.ts",
+    "build:shell-core": "tsc -b . && tsdown"
   },
   "dependencies": {
     "semver": "^7.8.5"

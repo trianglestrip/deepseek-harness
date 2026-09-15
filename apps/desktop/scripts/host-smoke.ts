@@ -2,9 +2,9 @@
  * Smoke-test the installed desktop Host over the `stdio` carrier.
  *
  * It links the workspace packages into a temporary runtime and profile, starts
- * the Host with `DSH_DESKTOP_TRANSPORT=stdio`, fetches the application document
- * through the wire, and stops the Host with a control frame. Run it after
- * changing the carrier, the wire, or the Host entry:
+ * the shell core under the runtime, fetches the application document through the
+ * wire, and stops the core with a control frame. Run it after changing the core,
+ * the wire, or the Host entry:
  *
  *   pnpm --filter @deepseek-ai/dsh-desktop run smoke:host
  */
@@ -14,7 +14,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync,
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { encodeDesktopRequestStart } from '../src/host-protocol.ts'
-import { DESKTOP_HOST_PROTOCOL_VERSION, encodeDesktopRequestControl } from '../../desktop-host/src/wire.ts'
+import { DESKTOP_HOST_PROTOCOL_VERSION, encodeShellCoreRequestControl } from '../src/shell-core-wire.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -45,6 +45,7 @@ function workspacePackages(): Array<{ name: string; directory: string }> {
       .map(entry => join(REPOSITORY_ROOT, 'vendor', entry.name)),
     join(REPOSITORY_ROOT, 'apps', 'cli'),
     join(REPOSITORY_ROOT, 'apps', 'web'),
+    join(REPOSITORY_ROOT, 'apps', 'desktop-host'),
   ]
   for (const directory of roots) {
     try {
@@ -103,7 +104,7 @@ async function main(): Promise<void> {
   }, undefined, 2)}\n`)
 
   const host = spawn(process.execPath, [
-    join(REPOSITORY_ROOT, 'apps', 'desktop-host', 'lib', 'index.js'),
+    join(REPOSITORY_ROOT, 'apps', 'desktop', 'lib', 'shell-core.js'),
     runtime,
     profile,
     '--allow-linked-profile',
@@ -112,36 +113,40 @@ async function main(): Promise<void> {
     env: {
       ...process.env,
       DSH_HOME: home,
-      DSH_DESKTOP_TRANSPORT: 'stdio',
-      DSH_DESKTOP_TRANSPORT_SCRIPT: join(APP_ROOT, 'src-tauri', 'transport', 'desktop-transport.js'),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   })
 
   let ready = false
   let document = ''
+  let reported: Error | undefined
   const frames = readFrames((frame) => {
-    if (frame.type === 5 && frame.id === 0) {
-      const event = JSON.parse(frame.payload.toString('utf8')) as { event: string; protocolVersion?: number; dshVersion?: string }
-      if (event.event === 'ready') {
-        if (event.protocolVersion !== DESKTOP_HOST_PROTOCOL_VERSION) {
-          throw new Error(`host smoke: protocol ${String(event.protocolVersion)} is not ${String(DESKTOP_HOST_PROTOCOL_VERSION)}`)
+    if (reported !== undefined) return
+    try {
+      if (frame.type === 5 && frame.id === 0) {
+        const event = JSON.parse(frame.payload.toString('utf8')) as { event: string; protocolVersion?: number; dshVersion?: string; message?: string }
+        if (event.event === 'ready') {
+          if (event.protocolVersion !== DESKTOP_HOST_PROTOCOL_VERSION) {
+            throw new Error(`host smoke: protocol ${String(event.protocolVersion)} is not ${String(DESKTOP_HOST_PROTOCOL_VERSION)}`)
+          }
+          ready = true
+          process.stdout.write(`host smoke: ready, dsh ${String(event.dshVersion)}\n`)
+          host.stdin.write(encodeDesktopRequestStart(STREAM_ID, {
+            url: 'dsh-app://app/index.html',
+            method: 'GET',
+            headers: [['accept', 'text/html']],
+            hasBody: false,
+          }))
+        } else {
+          throw new Error(`host smoke: Host reported ${event.event}: ${event.message ?? ''}`)
         }
-        ready = true
-        process.stdout.write(`host smoke: ready, dsh ${String(event.dshVersion)}\n`)
-        host.stdin.write(encodeDesktopRequestStart(STREAM_ID, {
-          url: 'dsh-app://app/index.html',
-          method: 'GET',
-          headers: [['accept', 'text/html']],
-          hasBody: false,
-        }))
-      } else {
-        throw new Error(`host smoke: Host reported ${event.event}`)
+        return
       }
-      return
+      if (frame.type === 2) document += frame.payload.toString('utf8')
+      if (frame.type === 1) process.stdout.write(`host smoke: response status ${String(JSON.parse(frame.payload.toString('utf8')).status)}\n`)
+    } catch (error) {
+      reported = error instanceof Error ? error : new Error(String(error))
     }
-    if (frame.type === 2) document += frame.payload.toString('utf8')
-    if (frame.type === 1) process.stdout.write(`host smoke: response status ${String(JSON.parse(frame.payload.toString('utf8')).status)}\n`)
   })
 
   host.stdout.on('data', (chunk: Buffer) => { frames(chunk) })
@@ -149,18 +154,23 @@ async function main(): Promise<void> {
 
   const deadline = Date.now() + TIMEOUT_MS
   try {
-    while (Date.now() < deadline && !document.includes('</html>')) await new Promise(resolve => setTimeout(resolve, 50))
+    while (Date.now() < deadline && !document.includes('</html>') && reported === undefined) await new Promise(resolve => setTimeout(resolve, 50))
+    if (reported !== undefined) throw reported
     if (!ready) throw new Error('host smoke: the Host never reported readiness')
-    if (!document.includes('__DSH_TRANSPORT__')) throw new Error('host smoke: the application document lacks the shell transport script')
+    // The shell installs its own transport as a window initialization script;
+    // this only proves the Host served a document that carries its own hooks.
+    if (!document.includes('ownsHost')) throw new Error('host smoke: the served document carries no transport hooks')
     process.stdout.write(`host smoke: document ${String(document.length)} bytes carries the shell transport\n`)
-    host.stdin.write(encodeDesktopRequestControl(1, 'shutdown'))
+    host.stdin.write(encodeShellCoreRequestControl(1, 'shutdown'))
     const exit = new Promise<number | null>(resolve => host.once('close', resolve))
     const code = await Promise.race([exit, new Promise<null>(resolve => setTimeout(() => { resolve(null) }, 30_000))])
     if (code !== 0) throw new Error(`host smoke: the Host exited with ${String(code)} after the shutdown control frame`)
     process.stdout.write('host smoke: ok\n')
   } finally {
     host.kill('SIGKILL')
-    rmSync(home, { recursive: true, force: true })
+    // DSH_DESKTOP_SMOKE_KEEP keeps the temporary runtime for diagnosis.
+    if (process.env.DSH_DESKTOP_SMOKE_KEEP === '1') process.stderr.write(`host smoke: kept ${home}\n`)
+    else rmSync(home, { recursive: true, force: true })
   }
 }
 

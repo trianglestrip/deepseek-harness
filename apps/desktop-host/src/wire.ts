@@ -1,12 +1,12 @@
-/** Framed request and response bytes for the Desktop Host transport. */
+/** Framed request and response bytes for the Electron Desktop Host transport. */
 
-/** Protocol version shared by the desktop shell and the installed Host. */
+/** Protocol version shared with the Electron shell. */
 export const DESKTOP_HOST_PROTOCOL_VERSION = 3 as const
 
-/** Child descriptor that receives request frames in the `fd` transport. */
+/** Child descriptor that receives Electron request frames. */
 export const DESKTOP_REQUEST_PIPE_FD = 3
 
-/** Child descriptor that emits response frames in the `fd` transport. */
+/** Child descriptor that emits Host response frames. */
 export const DESKTOP_RESPONSE_PIPE_FD = 4
 
 /** Maximum raw body bytes carried by one data frame. */
@@ -20,19 +20,15 @@ const REQUEST_FRAME_START = 1
 const REQUEST_FRAME_DATA = 2
 const REQUEST_FRAME_END = 3
 const REQUEST_FRAME_CANCEL = 4
-const REQUEST_FRAME_CONTROL = 5
 
 const RESPONSE_FRAME_START = 1
 const RESPONSE_FRAME_DATA = 2
 const RESPONSE_FRAME_END = 3
 const RESPONSE_FRAME_ERROR = 4
-const RESPONSE_FRAME_EVENT = 5
-const RESPONSE_FRAME_CONTROL_RESULT = 6
 type ResponseFrameType = typeof RESPONSE_FRAME_START | typeof RESPONSE_FRAME_DATA
   | typeof RESPONSE_FRAME_END | typeof RESPONSE_FRAME_ERROR
-  | typeof RESPONSE_FRAME_EVENT | typeof RESPONSE_FRAME_CONTROL_RESULT
 
-/** One validated request frame. */
+/** One validated request-pipe frame. */
 export type DesktopHostRequestFrame = {
   readonly type: 'start'
   readonly streamId: number
@@ -47,36 +43,6 @@ export type DesktopHostRequestFrame = {
 } | {
   readonly type: 'end' | 'cancel'
   readonly streamId: number
-} | {
-  readonly type: 'control'
-  readonly id: number
-  readonly command: string
-  readonly payload: unknown
-}
-
-/** Commands the control plane accepts. Unknown commands are answered as failures. */
-export type DesktopHostControlCommand = {
-  readonly id: number
-  readonly command: 'shutdown'
-  readonly payload?: unknown
-}
-
-/** Lifecycle events the Host publishes on the response stream. */
-export type DesktopHostLifecycleEvent = {
-  readonly event: 'ready'
-  readonly protocolVersion: typeof DESKTOP_HOST_PROTOCOL_VERSION
-  readonly dshVersion: string
-} | {
-  readonly event: 'fatal'
-  readonly message: string
-}
-
-/** One control answer; `ok` false carries the failure message. */
-export type DesktopHostControlResult = {
-  readonly id: number
-  readonly ok: boolean
-  readonly value?: unknown
-  readonly message?: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,45 +54,29 @@ function isHeaders(value: unknown): value is readonly [string, string][] {
     && typeof header[0] === 'string' && typeof header[1] === 'string')
 }
 
-/**
- * Frame ids share one slot: request stream ids are 1..2^32-1, control ids are
- * their own 1..2^32-1 sequence, and lifecycle events use 0.
- */
-function assertFrameId(id: number): void {
-  if (!Number.isInteger(id) || id < 0 || id > 0xffff_ffff) {
-    throw new Error(`dsh desktop: invalid frame id ${String(id)}`)
+function assertStreamId(streamId: number): void {
+  if (!Number.isInteger(streamId) || streamId < 1 || streamId > 0xffff_ffff) {
+    throw new Error(`dsh desktop: invalid pipe stream id ${String(streamId)}`)
   }
 }
 
-function encodeFrame(type: ResponseFrameType, id: number, payload: Buffer): Buffer {
-  assertFrameId(id)
+function encodeFrame(type: ResponseFrameType, streamId: number, payload: Buffer): Buffer {
+  assertStreamId(streamId)
   const limit = type === RESPONSE_FRAME_DATA ? DESKTOP_PIPE_CHUNK_BYTES : MAX_CONTROL_PAYLOAD_BYTES
   if (payload.byteLength > limit) {
-    throw new Error(`dsh desktop: response frame exceeds the ${String(limit)}-byte limit`)
+    throw new Error(`dsh desktop: response pipe frame exceeds the ${String(limit)}-byte limit`)
   }
   const frame = Buffer.allocUnsafe(FRAME_HEADER_BYTES + payload.byteLength)
   frame.writeUInt32BE(FRAME_MAGIC, 0)
   frame.writeUInt8(type, 4)
-  frame.writeUInt32BE(id, 5)
+  frame.writeUInt32BE(streamId, 5)
   frame.writeUInt32BE(payload.byteLength, 9)
   payload.copy(frame, FRAME_HEADER_BYTES)
   return frame
 }
 
-function encodeJsonFrame(type: ResponseFrameType, id: number, value: unknown): Buffer {
-  return encodeFrame(type, id, Buffer.from(JSON.stringify(value), 'utf8'))
-}
-
-/**
- * Encode one control command. The `fd` carrier's shell sends these over the
- * control channel; the `stdio` carrier frames them on the request stream, which
- * has no control channel of its own.
- * @param id - 1-based control id.
- * @param command - command name the Host dispatches.
- * @returns the framed bytes to write to the request stream.
- */
-export function encodeDesktopRequestControl(id: number, command: string): Buffer {
-  return encodeFrame(REQUEST_FRAME_CONTROL, id, Buffer.from(JSON.stringify({ command }), 'utf8'))
+function encodeJsonFrame(type: ResponseFrameType, streamId: number, value: unknown): Buffer {
+  return encodeFrame(type, streamId, Buffer.from(JSON.stringify(value), 'utf8'))
 }
 
 /** Encode response metadata before any body frames. */
@@ -156,24 +106,14 @@ export function encodeDesktopResponseError(streamId: number, message: string): B
   return encodeJsonFrame(RESPONSE_FRAME_ERROR, streamId, { message })
 }
 
-/** Encode one lifecycle event on the response stream. */
-export function encodeDesktopResponseEvent(event: DesktopHostLifecycleEvent): Buffer {
-  return encodeJsonFrame(RESPONSE_FRAME_EVENT, 0, event)
-}
-
-/** Encode one control answer on the response stream. */
-export function encodeDesktopResponseControlResult(result: DesktopHostControlResult): Buffer {
-  return encodeJsonFrame(RESPONSE_FRAME_CONTROL_RESULT, result.id, result)
-}
-
-/** Incrementally decode validated request frames from the request stream. */
+/** Incrementally decode validated request frames from the Electron byte pipe. */
 export class DesktopHostRequestDecoder {
   private buffer: Buffer = Buffer.alloc(0)
 
   /**
    * Append bytes and return every complete request frame.
-   * @param chunk - next bytes read from the request stream.
-   * @returns complete frames in arrival order.
+   * @param chunk - next bytes read from the Electron request pipe.
+   * @returns complete frames in pipe order.
    */
   push(chunk: Buffer): DesktopHostRequestFrame[] {
     this.buffer = this.buffer.byteLength === 0 ? chunk : Buffer.concat([this.buffer, chunk])
@@ -187,19 +127,19 @@ export class DesktopHostRequestDecoder {
 
   /** Reject EOF that splits a frame. */
   finish(): void {
-    if (this.buffer.byteLength !== 0) throw new Error('dsh desktop: request stream ended inside a frame')
+    if (this.buffer.byteLength !== 0) throw new Error('dsh desktop: Electron request pipe ended inside a frame')
   }
 
   private next(): DesktopHostRequestFrame | undefined {
     if (this.buffer.byteLength < FRAME_HEADER_BYTES) return undefined
-    if (this.buffer.readUInt32BE(0) !== FRAME_MAGIC) throw new Error('dsh desktop: invalid request frame marker')
+    if (this.buffer.readUInt32BE(0) !== FRAME_MAGIC) throw new Error('dsh desktop: invalid Electron request frame marker')
     const rawType = this.buffer.readUInt8(4)
-    const id = this.buffer.readUInt32BE(5)
+    const streamId = this.buffer.readUInt32BE(5)
     const payloadLength = this.buffer.readUInt32BE(9)
-    assertFrameId(id)
+    assertStreamId(streamId)
     const limit = rawType === REQUEST_FRAME_DATA ? DESKTOP_PIPE_CHUNK_BYTES : MAX_CONTROL_PAYLOAD_BYTES
     if (payloadLength > limit) {
-      throw new Error(`dsh desktop: request frame exceeds the ${String(limit)}-byte limit`)
+      throw new Error(`dsh desktop: Electron request frame exceeds the ${String(limit)}-byte limit`)
     }
     const frameLength = FRAME_HEADER_BYTES + payloadLength
     if (this.buffer.byteLength < frameLength) return undefined
@@ -207,33 +147,30 @@ export class DesktopHostRequestDecoder {
     this.buffer = this.buffer.subarray(frameLength)
     switch (rawType) {
       case REQUEST_FRAME_START:
-        return this.parseStart(id, payload)
+        return this.parseStart(streamId, payload)
       case REQUEST_FRAME_DATA:
-        return { type: 'data', streamId: id, data: payload }
+        return { type: 'data', streamId, data: payload }
       case REQUEST_FRAME_END:
-        this.assertBare(id, payloadLength, 'end')
-        return { type: 'end', streamId: id }
+        if (payloadLength !== 0) throw new Error('dsh desktop: Electron request end frame carried a payload')
+        return { type: 'end', streamId }
       case REQUEST_FRAME_CANCEL:
-        this.assertBare(id, payloadLength, 'cancel')
-        return { type: 'cancel', streamId: id }
-      case REQUEST_FRAME_CONTROL:
-        return this.parseControl(id, payload)
+        if (payloadLength !== 0) throw new Error('dsh desktop: Electron request cancel frame carried a payload')
+        return { type: 'cancel', streamId }
       default:
-        throw new Error(`dsh desktop: unknown request frame type ${String(rawType)}`)
+        throw new Error(`dsh desktop: unknown Electron request frame type ${String(rawType)}`)
     }
   }
 
-  private assertBare(id: number, payloadLength: number, subject: string): void {
-    if (id === 0) throw new Error(`dsh desktop: request ${subject} frame carried the event id`)
-    if (payloadLength !== 0) throw new Error(`dsh desktop: request ${subject} frame carried a payload`)
-  }
-
   private parseStart(streamId: number, payload: Buffer): DesktopHostRequestFrame {
-    if (streamId === 0) throw new Error('dsh desktop: request start frame carried the event id')
-    const value = this.parseJson(payload, 'start')
+    let value: unknown
+    try {
+      value = JSON.parse(payload.toString('utf8')) as unknown
+    } catch (error) {
+      throw new Error(`dsh desktop: Electron request start payload is not JSON: ${error instanceof Error ? error.message : String(error)}`)
+    }
     if (!isRecord(value) || typeof value.url !== 'string' || typeof value.method !== 'string'
       || !isHeaders(value.headers) || typeof value.hasBody !== 'boolean') {
-      throw new Error('dsh desktop: invalid request start payload')
+      throw new Error('dsh desktop: invalid Electron request start payload')
     }
     return {
       type: 'start',
@@ -242,23 +179,6 @@ export class DesktopHostRequestDecoder {
       method: value.method,
       headers: value.headers,
       hasBody: value.hasBody,
-    }
-  }
-
-  private parseControl(id: number, payload: Buffer): DesktopHostRequestFrame {
-    if (id === 0) throw new Error('dsh desktop: request control frame carried the event id')
-    const value = this.parseJson(payload, 'control')
-    if (!isRecord(value) || typeof value.command !== 'string' || value.command === '') {
-      throw new Error('dsh desktop: invalid request control payload')
-    }
-    return { type: 'control', id, command: value.command, payload: value.payload }
-  }
-
-  private parseJson(payload: Buffer, subject: string): unknown {
-    try {
-      return JSON.parse(payload.toString('utf8')) as unknown
-    } catch (error) {
-      throw new Error(`dsh desktop: request ${subject} payload is not JSON: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 }

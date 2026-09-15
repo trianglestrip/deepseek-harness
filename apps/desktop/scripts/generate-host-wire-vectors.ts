@@ -2,18 +2,15 @@
  * Regenerate the cross-language wire vectors the Rust shell checks its codec
  * against.
  *
- * The vectors are the contract between the Host (TypeScript) and the desktop
- * shell (Rust): every frame the Host emits is encoded here, and the Rust test
- * suite decodes the same bytes. Run it after any wire change:
+ * The vectors are the contract between the shell core (TypeScript) and the
+ * desktop shell (Rust): every frame the core emits is encoded here, and the
+ * Rust test suite decodes the same bytes. Run it after any wire change:
  *
  *   pnpm exec tsx apps/desktop/scripts/generate-host-wire-vectors.ts
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import {
-  encodeDesktopRequestControl,
-} from '../../desktop-host/src/wire.ts'
 import {
   encodeDesktopRequestCancel,
   encodeDesktopRequestData,
@@ -22,13 +19,14 @@ import {
 } from '../src/host-protocol.ts'
 import {
   DESKTOP_HOST_PROTOCOL_VERSION,
-  encodeDesktopResponseControlResult,
-  encodeDesktopResponseData,
-  encodeDesktopResponseEnd,
-  encodeDesktopResponseError,
-  encodeDesktopResponseEvent,
-  encodeDesktopResponseStart,
-} from '../../desktop-host/src/wire.ts'
+  encodeCoreResponseControlResult,
+  encodeCoreResponseData,
+  encodeCoreResponseEnd,
+  encodeCoreResponseError,
+  encodeCoreResponseEvent,
+  encodeCoreResponseStart,
+  encodeShellCoreRequestControl,
+} from '../src/shell-core-wire.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const OUTPUT = join(APP_ROOT, 'src-tauri', 'tests', 'fixtures', 'host-wire-vectors.json')
@@ -88,13 +86,13 @@ const vectors: WireVector[] = [
   {
     name: 'request.control.shutdown',
     direction: 'request',
-    hex: hex(encodeDesktopRequestControl(3, 'shutdown')),
+    hex: hex(encodeShellCoreRequestControl(3, 'shutdown')),
     decoded: { type: 'control', id: 3, command: 'shutdown' },
   },
   {
     name: 'response.start',
     direction: 'response',
-    hex: hex(encodeDesktopResponseStart(1, {
+    hex: hex(encodeCoreResponseStart(1, {
       status: 200,
       headers: [['content-type', 'text/html; charset=utf-8']],
       hasBody: true,
@@ -109,25 +107,25 @@ const vectors: WireVector[] = [
   {
     name: 'response.data',
     direction: 'response',
-    hex: hex(encodeDesktopResponseData(1, responseBody)),
+    hex: hex(encodeCoreResponseData(1, responseBody)),
     decoded: { type: 'data', dataBase64: responseBody.toString('base64') },
   },
   {
     name: 'response.end',
     direction: 'response',
-    hex: hex(encodeDesktopResponseEnd(1)),
+    hex: hex(encodeCoreResponseEnd(1)),
     decoded: { type: 'end' },
   },
   {
     name: 'response.error',
     direction: 'response',
-    hex: hex(encodeDesktopResponseError(1, 'handler failed')),
+    hex: hex(encodeCoreResponseError(1, 'handler failed')),
     decoded: { type: 'error', message: 'handler failed' },
   },
   {
     name: 'response.event.ready',
     direction: 'response',
-    hex: hex(encodeDesktopResponseEvent({
+    hex: hex(encodeCoreResponseEvent({
       event: 'ready',
       protocolVersion: DESKTOP_HOST_PROTOCOL_VERSION,
       dshVersion: '0.1.5-rc.2',
@@ -137,13 +135,13 @@ const vectors: WireVector[] = [
   {
     name: 'response.event.fatal',
     direction: 'response',
-    hex: hex(encodeDesktopResponseEvent({ event: 'fatal', message: 'composition failed' })),
+    hex: hex(encodeCoreResponseEvent({ event: 'fatal', message: 'composition failed' })),
     decoded: { event: 'fatal', message: 'composition failed' },
   },
   {
     name: 'response.controlResult',
     direction: 'response',
-    hex: hex(encodeDesktopResponseControlResult({ id: 2, ok: true, value: { restarted: false } })),
+    hex: hex(encodeCoreResponseControlResult({ id: 2, ok: true, value: { restarted: false } })),
     decoded: { id: 2, ok: true, value: { restarted: false } },
   },
 ]

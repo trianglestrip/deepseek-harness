@@ -22,19 +22,19 @@ const KILL_POLL_MS: u64 = 50;
 const WATCH_POLL_MS: u64 = 500;
 /// Directory name of the bundled runtime inside the application resources.
 const RUNTIME_DIRECTORY: &str = "desktop-runtime";
+/// Shell core entry the bundled Node.js executable runs.
+const SHELL_CORE_FILE: &str = "shell-core.js";
 
 /// One packaged Host launch the shell can carry.
 pub struct HostLaunch {
     /// Bundled upstream Node.js executable.
     pub node: PathBuf,
-    /// Installed `@deepseek-ai/dsh-desktop-host` entry script.
+    /// Shell core script the shell spawns to parent the installed Host.
     pub entry: PathBuf,
     /// Immutable dsh packages carried by the application.
     pub runtime_dir: PathBuf,
     /// Active desktop plugin profile.
     pub project_dir: PathBuf,
-    /// Renderer transport script the shell injects into the served index.
-    pub transport_script: Option<PathBuf>,
     /// Whether the Host accepts a profile whose packages are linked rather than
     /// installed, which is the case for a development runtime tree.
     pub allow_linked: bool,
@@ -53,22 +53,15 @@ pub fn host_launch(app: &AppHandle) -> Option<HostLaunch> {
     let root = resource_dir.join(RUNTIME_DIRECTORY);
     let node = root.join("node").join(node_executable_name());
     let dsh = root.join("dsh");
-    let entry = dsh
-        .join("node_modules")
-        .join("@deepseek-ai")
-        .join("dsh-desktop-host")
-        .join("lib")
-        .join("index.js");
+    let entry = root.join(SHELL_CORE_FILE);
     if !node.exists() || !entry.exists() {
         return None;
     }
-    let transport_script = root.join("desktop-transport.js");
     Some(HostLaunch {
         node,
         entry,
         runtime_dir: dsh,
         project_dir: harness_home().join("profiles").join("desktop"),
-        transport_script: transport_script.exists().then_some(transport_script),
         allow_linked: false,
     })
 }
@@ -79,7 +72,8 @@ pub fn host_launch(app: &AppHandle) -> Option<HostLaunch> {
 /// `profile/`, which `apps/desktop/scripts/dev-runtime.ts` links from the
 /// workspace, so `tauri dev` exercises the same carrier the packaged
 /// application uses. The optional `DSH_DESKTOP_DEV_NODE` names the Node.js
-/// executable, defaulting to `node` on `PATH`.
+/// executable, defaulting to `node` on `PATH`; the core itself comes from the
+/// package build under `apps/desktop/lib`.
 fn dev_host_launch() -> Option<HostLaunch> {
     let root = std::env::var("DSH_DESKTOP_DEV_RUNTIME")
         .ok()
@@ -89,25 +83,18 @@ fn dev_host_launch() -> Option<HostLaunch> {
         Ok(value) if !value.is_empty() => PathBuf::from(value),
         _ => PathBuf::from(node_executable_name()),
     };
-    let runtime_dir = root.join("dsh");
-    let entry = runtime_dir
-        .join("node_modules")
-        .join("@deepseek-ai")
-        .join("dsh-desktop-host")
+    let entry = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()?
         .join("lib")
-        .join("index.js");
+        .join(SHELL_CORE_FILE);
     if !entry.exists() {
         return None;
     }
-    let transport_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("transport")
-        .join("desktop-transport.js");
     Some(HostLaunch {
         node,
         entry,
-        runtime_dir,
+        runtime_dir: root.join("dsh"),
         project_dir: root.join("profile"),
-        transport_script: transport_script.exists().then_some(transport_script),
         allow_linked: true,
     })
 }
@@ -118,8 +105,8 @@ fn dev_host_launch() -> Option<HostLaunch> {
  * @param transport_script - script the Host injects into the served index.
  * @returns the environment pairs applied over the inherited environment.
  */
-pub fn host_environment(transport_script: Option<&Path>) -> Vec<(String, String)> {
-    let mut environment: Vec<(String, String)> = std::env::vars()
+pub fn host_environment() -> Vec<(String, String)> {
+    std::env::vars()
         .filter(|(name, _)| {
             name != "NODE_OPTIONS"
                 && name != "NODE_PATH"
@@ -128,14 +115,7 @@ pub fn host_environment(transport_script: Option<&Path>) -> Vec<(String, String)
                 && !name.starts_with("pnpm_")
                 && !name.starts_with("corepack_")
         })
-        .collect();
-    if let Some(path) = transport_script {
-        environment.push((
-            "DSH_DESKTOP_TRANSPORT_SCRIPT".into(),
-            path.to_string_lossy().into_owned(),
-        ));
-    }
-    environment
+        .collect()
 }
 
 /// Supervised-child state shared by the tray, the window, and the commands.

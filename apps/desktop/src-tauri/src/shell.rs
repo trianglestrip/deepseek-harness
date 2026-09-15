@@ -15,16 +15,31 @@ use crate::supervisor::{self, AppState, HostLaunch};
 pub const MAIN_WINDOW: &str = "main";
 /// Loading-page fragment carrying the failure text of an exited server.
 const MESSAGE_FRAGMENT: &str = "message=";
+/// Window title, also the initial document title the loading page replaces.
+const WINDOW_TITLE: &str = "DeepSeek Harness Desktop";
+/// Initial window size, matching the replaced Electron shell.
+const WINDOW_SIZE: (f64, f64) = (1400.0, 900.0);
+/// Renderer transport the shell installs before the application document runs.
+const TRANSPORT_SCRIPT: &str = include_str!("../transport/desktop-transport.js");
 
-/// Build the tray, record the loading page, and start the application.
+/// Build the window and tray, record the loading page, and start the application.
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
-    build_tray(app)?;
-    if let Some(window) = handle.get_webview_window(MAIN_WINDOW) {
-        if let Ok(url) = window.url() {
-            handle.state::<AppState>().set_initial_url(url);
-        }
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        MAIN_WINDOW,
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title(WINDOW_TITLE)
+    .inner_size(WINDOW_SIZE.0, WINDOW_SIZE.1)
+    // The transport is installed here rather than by the Host, whose own
+    // injection targets a shell that can stream a protocol response.
+    .initialization_script(TRANSPORT_SCRIPT)
+    .build()?;
+    if let Ok(url) = window.url() {
+        handle.state::<AppState>().set_initial_url(url);
     }
+    build_tray(app)?;
     // The dsh boot is the long pole; start it immediately so the plugin-tree
     // boot runs while Tauri finishes its own initialisation.
     std::thread::spawn(move || boot(&handle));
@@ -70,7 +85,7 @@ fn boot(app: &AppHandle) {
 /// Serve the harness web GUI from the packaged Host over the private carrier.
 fn boot_host(app: &AppHandle, launch: HostLaunch) {
     supervisor::boot_log("starting the packaged desktop Host");
-    let environment = supervisor::host_environment(launch.transport_script.as_deref());
+    let environment = supervisor::host_environment();
     let failed = app.clone();
     let client = HostClient::start(
         &launch.node.to_string_lossy(),

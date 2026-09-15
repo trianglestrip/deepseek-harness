@@ -1,18 +1,29 @@
 /**
  * Renderer transport hooks for the Tauri desktop shell.
  *
- * The Host serves the page with this script injected in `<head>`: unary RPC and
+ * The shell injects this script as a window initialization script, so it runs
+ * before the document's own scripts: unary RPC and
  * Gateway streams then travel over the shell's private framed carrier instead of
  * the loopback HTTP and WebSocket transports a served page uses. `ownsHost`
  * declares that the page owns the Host, so the privileged surface is reachable
  * without a loopback authority.
  *
  * Assets and index injections still load over the `dsh-app` protocol, which is
- * why no bundle transport is provided.
+ * why no bundle transport is provided. The global is defined without a setter,
+ * so the transport the Host injects for an Electron-family parent cannot replace
+ * it with one whose streams would have to cross a non-streaming URI scheme.
  */
 ;(function () {
-  const internals = globalThis.__TAURI_INTERNALS__
-  if (internals === undefined) return
+  /**
+   * Tauri's IPC internals; resolved on use, because an initialization script may
+   * run before the runtime installs them.
+   * @returns {object} the Tauri IPC internals.
+   */
+  function internals() {
+    const value = globalThis.__TAURI_INTERNALS__
+    if (value === undefined) throw new Error('desktop transport: Tauri IPC is unavailable')
+    return value
+  }
 
   const STREAM_PATH = '/.dsh/remote-stream'
   const STREAM_HEADER = 'x-dsh-stream'
@@ -20,7 +31,7 @@
   /** One Host response channel: an id plus the callback Rust delivers frames to. */
   function createChannel(handler) {
     return {
-      id: internals.transformCallback(handler),
+      id: internals().transformCallback(handler),
       toJSON() { return '__CHANNEL__:' + String(this.id) },
     }
   }
@@ -61,7 +72,7 @@
       start(value) { controller = value },
       cancel() {
         if (streamId === undefined) return
-        internals.invoke('dsh_request_cancel', { streamId: streamId }).catch(() => undefined)
+        internals().invoke('dsh_request_cancel', { streamId: streamId }).catch(() => undefined)
       },
     })
 
@@ -91,7 +102,7 @@
     }
 
     try {
-      streamId = await internals.invoke('dsh_request_start', {
+      streamId = await internals().invoke('dsh_request_start', {
         args: { url: target.toString(), method: method, headers: headers, hasBody: hasBody },
         onFrame: createChannel(onFrame),
       })
@@ -102,7 +113,7 @@
 
     if (options.signal !== undefined) {
       const abort = () => {
-        internals.invoke('dsh_request_cancel', { streamId: streamId }).catch(() => undefined)
+        internals().invoke('dsh_request_cancel', { streamId: streamId }).catch(() => undefined)
         controller.error(new DOMException('The request was aborted', 'AbortError'))
       }
       if (options.signal.aborted) abort()
@@ -114,18 +125,18 @@
       try {
         const bytes = await toBytes(body)
         if (bytes !== null) {
-          await internals.invoke('dsh_request_body', bytes, bodyHeaders)
+          await internals().invoke('dsh_request_body', bytes, bodyHeaders)
         } else {
           const reader = body.getReader()
           for (;;) {
             const next = await reader.read()
             if (next.done) break
-            await internals.invoke('dsh_request_body', next.value, bodyHeaders)
+            await internals().invoke('dsh_request_body', next.value, bodyHeaders)
           }
         }
-        await internals.invoke('dsh_request_end', { streamId: streamId })
+        await internals().invoke('dsh_request_end', { streamId: streamId })
       } catch (error) {
-        internals.invoke('dsh_request_cancel', { streamId: streamId }).catch(() => undefined)
+        internals().invoke('dsh_request_cancel', { streamId: streamId }).catch(() => undefined)
         controller.error(error instanceof Error ? error : new Error(String(error)))
         throw error
       }
@@ -169,5 +180,10 @@
     if (pending !== '') yield JSON.parse(pending)
   }
 
-  globalThis.__DSH_TRANSPORT__ = { ownsHost: true, fetch: request, openStream: openStream }
+  Object.defineProperty(globalThis, '__DSH_TRANSPORT__', {
+    value: { ownsHost: true, fetch: request, openStream: openStream },
+    writable: false,
+    configurable: false,
+    enumerable: true,
+  })
 })()

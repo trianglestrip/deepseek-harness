@@ -68,7 +68,6 @@ impl HostClient {
             .arg(runtime_dir)
             .arg(project_dir)
             .current_dir(project_dir)
-            .env("DSH_DESKTOP_TRANSPORT", "stdio")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

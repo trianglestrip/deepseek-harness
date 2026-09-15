@@ -39,7 +39,7 @@ function pnpm(args: readonly string[], cwd: string = REPOSITORY_ROOT): Promise<v
   return new Promise((resolvePromise, reject) => {
     const child = spawn('pnpm', [...args], { cwd, stdio: 'inherit', shell: process.platform === 'win32' })
     child.once('error', reject)
-    child.once('close', code => {
+    child.once('close', (code) => {
       if (code === 0) resolvePromise()
       else reject(new Error(`desktop prepare: pnpm ${args.join(' ')} exited with ${String(code)}`))
     })
@@ -48,11 +48,13 @@ function pnpm(args: readonly string[], cwd: string = REPOSITORY_ROOT): Promise<v
 
 const steps: readonly Step[] = [
   {
-    name: 'build the desktop Host package',
-    complete: () => existsSync(join(REPOSITORY_ROOT, 'apps', 'desktop-host', 'lib', 'index.js')),
+    name: 'build the desktop Host package and the shell core',
+    complete: () => existsSync(join(REPOSITORY_ROOT, 'apps', 'desktop-host', 'lib', 'index.js'))
+      && existsSync(join(APP_ROOT, 'lib', 'shell-core.js')),
     run: async () => {
       await pnpm(['exec', 'tsc', '-b', 'apps/desktop-host'])
       await pnpm(['--dir', 'apps/desktop-host', 'exec', 'tsdown'])
+      await pnpm(['--dir', 'apps/desktop', 'run', 'build:shell-core'])
     },
   },
   {
@@ -100,7 +102,7 @@ const steps: readonly Step[] = [
   },
   {
     name: 'copy the Tauri resource tree',
-    complete: () => existsSync(join(RESOURCES, 'dsh')) && existsSync(join(RESOURCES, 'desktop-transport.js')),
+    complete: () => existsSync(join(RESOURCES, 'dsh')) && existsSync(join(RESOURCES, 'shell-core.js')),
     run: () => pnpm(['run', 'prepare:resources'], APP_ROOT),
   },
 ]
