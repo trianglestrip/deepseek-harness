@@ -112,11 +112,11 @@ apps/desktop/
 
 | 阶段 | 内容 | 文件 | 验收 | 估工 |
 |---|---|---|---|---|
-| **P0** | 页面侧 API 桥：`ui/ipc.js` 造出与 preload 同形的 `window.dsh`（`locale/plugins/backend/updates`），启动页与插件页共用 | `ui/ipc.js`、`ui/index.html` | vitest：`window.dsh` 形状与 Electron `DshDesktopApi` 键一一对应（对照快照） | 0.5 天 |
-| **P1** | 恢复三件套 + 启动页按钮（Retry ✅ / Reset / Disable all）+ `profileRecovery` 决定是否显示 Reset | `src-tauri/src/recovery.rs`、`shell.rs`、`ui/index.html` | Rust 单测（动作分发、仅打包态允许 reset）+ 手工：指向不存在的 profile 触发失败后按钮可用 | 1–2 天 |
-| **P2** | 插件管理：`desktop-plugins.ts`（复用 `DesktopProjectManager`）+ `plugins.rs` + `ui/plugin-manager.*` + 第二窗口 | 见 §3 | 单测（参数校验、路径、profile 锁定）+ 手工：列/装/卸/升级/启停/全禁，每步后端自动重启 | 3–5 天 |
+| **P0 ✅** | 页面侧 API 桥：`shell-api.js` 安装 `window.dsh`，字典迁到 Rust | `src-tauri/shell-api.js`、`src-tauri/src/locale.rs` | `tests/shell-api.spec.ts` 逐组断言命令与参数；Rust locale 单测 4 个 | 完成 |
+| **P1 ✅** | 恢复三件套 + 启动页四个动作 + `profileRecovery` 门控 | `plugins.rs`、`shell.rs`（`application_restart`）、`ui/index.html` | 失败路径实测（日志 `dsh unavailable`），重启串行化 | 完成 |
+| **P2 ✅** | 插件管理：`desktop-plugins.ts` + `plugins.rs` + 插件窗口 + 托盘项 | `src/desktop-plugins.ts`、`src-tauri/src/plugins.rs`、`ui/plugin-manager.*` | `tests/desktop-plugins.spec.ts`（6）+ CLI 对链接 profile 实测 `list`；上游 manager spec 覆盖事务 | 完成 |
 | **P3** | 菜单与窗口 1:1：应用菜单两项、主窗口 ready 后再 show、导航失败进失败页 | `menu.rs`、`shell.rs` | 手工冒烟 + 失败路径日志 | 1 天 |
-| **P4** | 更新：`tauri-plugin-updater` + `update.rs` + 状态事件 + 更新对话框（Tauri dialog 插件或自绘页） | `update.rs`、`menu.rs`、`ui/` | 单测（状态机、无端点时的失败分支）+ 手工：假装有新版本 | 2–3 天 |
+| **P4 ✅（待发布配置）** | 更新：`tauri-plugin-updater` + `update.rs` + 托盘对话框 | `update.rs`、`shell.rs`、`tauri.conf.json` | Rust 单测（阶段序列化）+ 实测无端点构建报 `idle`；端点/公钥由发布配置提供 | 完成 |
 | **P5** | 发布：签名/公证/安装器钩子（卸载保留 `DSH_HOME`）/上传计划 | `tauri.conf.json`、`scripts/*` | 手工：本地产出安装包并安装/卸载验证 `DSH_HOME` 保留 | 3–5 天 |
 | **P6** | 测试面对齐：逐个补齐 Electron 的 16 个 spec 对应行为 | Rust/vitest | 见 §6 表 | 2–3 天 |
 

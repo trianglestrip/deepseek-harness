@@ -25,8 +25,10 @@ src
 - **The renderer transport is the shell's.** `desktop-transport.js` installs `__DSH_TRANSPORT__` with `ownsHost: true` plus `fetch` and `openStream` over the invoke commands, matching the seam a served page fills with HTTP and WebSocket. The shell injects it as a window initialization script and defines the global without a setter, because Tauri's URI-scheme responder cannot stream and the script the Host injects for an Electron-family parent would.
 - **The supervisor path stays as the fallback.** Without a packaged runtime the shell spawns the checkout's built CLI with `--profile desktop --no-open --port 0`, reads the `dsh web: <authenticatedUrl>` line from its stdout, and navigates the window to that URL; the `?token=` → cookie exchange happens inside that first navigation.
 - **Both paths use their own profile.** The supervised CLI boots the shipped `web` profile, because the desktop profile's composition turns the Web server off; `DSH_DESKTOP_PROFILE` overrides the choice. The Host composes `~/.dsh/profiles/desktop` as its plugin profile.
+- **The shell owns its pages' API and copy.** `shell-api.js` installs `window.dsh` — `locale`, `backend`, `plugins`, `updates`, and the startup actions — into every page the shell owns, and `locale.rs` answers it from the dictionary the tray and dialogs read too. The plugin window is a shell page backed by `desktop-plugins.js`, which runs the same profile manager the Electron main process drove.
 - **Lifecycle is the tray's.** Closing the window hides it, so the application and its session stay warm; the tray owns Show, Restart dsh, and Quit; `tauri-plugin-single-instance` focuses the existing window on a second launch. Both boot paths kill the whole dsh tree on Quit.
-- **Failure surfaces on the loading page.** A boot failure, or a Host that exits after readiness, navigates back to the loading page with the message in the fragment and reveals a Restart button.
+- **Failure surfaces on the loading page.** A boot failure, or a Host that exits after readiness, navigates back to the loading page with the message in the fragment; the page offers retry, relaunch, and — when the packaged runtime can rebuild a profile — disabling every third-party plugin or resetting the desktop profile.
+- **Updates keep the Electron coordinator's phases.** The tray's Check for Updates… asks through a native dialog, and the shell installs only a version a check verified. A build without `plugins.updater.{endpoints,pubkey}` reports no update instead of failing.
 - **The package publishes no JavaScript** (`files: []`); the shell reaches users as a platform installer.
 
 ## Development
@@ -50,7 +52,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run prepare:resources
 pnpm --filter @deepseek-ai/dsh-desktop run build
 ```
 
-`tauri.conf.json` bundles `src-tauri/resources/desktop-runtime` as the `desktop-runtime` resource directory, and `src-tauri/resources/` is a build output. A checkout without prepared resources still runs the supervisor path, so `tauri dev` needs no packaging step.
+`tauri.conf.json` bundles `src-tauri/resources/desktop-runtime` — the bundled Node.js executable, the pnpm the plugin transactions run, the installed dsh closure, `shell-core.js`, and `desktop-plugins.js` — as the `desktop-runtime` resource directory, and `src-tauri/resources/` is a build output. A checkout without prepared resources still runs the supervisor path, so `tauri dev` needs no packaging step. A release build fills in `plugins.updater.{endpoints,pubkey}` and the platform signing and notarization settings; nothing in this fork configures them, so a build without them installs no updates.
 
 ## Repository ownership
 

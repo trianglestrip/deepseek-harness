@@ -34,25 +34,25 @@
 | # | Electron 能力 | 原实现 | Tauri 归属 | 状态 |
 |---|---|---|---|---|
 | 1 | 窗口、关窗常驻、单实例 | `main.ts` `createWindow`、`single-instance.ts` | `shell.rs`（`on_window_event`、`tauri-plugin-single-instance`） | ✅ |
-| 2 | 托盘与菜单 | 原生应用菜单（`Application` → Desktop Plugins… / Check for Updates…） | `shell.rs` 托盘（Show / Restart dsh / Quit）；两项业务菜单待补 | ⚠️ |
+| 2 | 托盘与菜单 | 原生应用菜单（`Application` → Desktop Plugins… / Check for Updates…） | `shell.rs` 托盘（Show / Desktop Plugins… / Check for Updates… / Restart dsh / Quit） | ✅ |
 | 3 | 打包 Host 私有载体 | `host-process.ts` + fd3/4 + Node IPC | `src/shell-core.ts`（复用 `host-process.ts`）+ `src-tauri/src/host/{client,frame,bridge}.rs` + `transport/desktop-transport.js` | ✅ |
-| 4 | 渲染层 transport 注入 | `DESKTOP_TRANSPORT_SCRIPT` 内联 | Host 注入 `__DSH_TRANSPORT__`（`ownsHost` + `fetch` + `openStream`） | ✅ |
+| 4 | 渲染层 transport 注入 | `DESKTOP_TRANSPORT_SCRIPT` 内联 | 壳以 `initialization_script` 注入 `transport/desktop-transport.js`（不可写 `__DSH_TRANSPORT__`） | ✅ |
 | 5 | 监督回退路径 | 无（Electron 只有 Host 路径） | `supervisor.rs`：`dsh web` + readiness 行解析 + 崩溃监视 + 进程组 | ✅（Tauri 独有） |
-| 6 | 后端状态机 | `backend-controller.ts`(148)：`starting/ready/error{message,profileRecovery}` + 串行重试 | `backend.rs`（状态机 + `profile_recovery` 判定） | ✅ |
+| 6 | 后端状态机 | `backend-controller.ts`(148)：`starting/ready/error{message,profileRecovery}` + 串行重试 | `backend.rs`（状态机 + `profile_recovery` 判定）+ `shell.rs` 串行化重启 | ✅ |
 | 7 | 状态与重试通道 | `backendStatus` / `backendRetry` | `backend_status` / `backend_retry` 命令 | ✅ |
-| 8 | 恢复动作 | `applicationRestart` / `configurationReset` / `disablePlugins` | 仅 `restart_dsh`（= 重试）；其余待做 | 🔜 |
-| 9 | 启动/失败页 | `renderer/startup.*` + `startup-document.ts` + `startup-error.ts` | `ui/index.html`（文案本地化、失败 fragment、Retry；Reset/Disable 按钮待补） | ⚠️ |
-| 10 | 壳 UI 本地化 | `locale.ts`（en/zh-CN 全量字典 + `{name}` 格式化 + `localeGet`） | `ui/locale.js` + `locale.d.ts` + `tests/locale.spec.ts`（约 60 键 ×2） | ✅ |
-| 11 | 插件管理窗口 | `renderer/plugin-manager.*` + 第二窗口 + 独立 preload | 待做：第二窗口 + `ui/plugin-manager.html` | 🔜 |
-| 12 | 插件操作（列表/装/卸/升级/启停/全禁） | 7 个 IPC + `project-manager.ts` | 方案 D：`desktop-plugins.ts` + Rust 调用 | 🔜 |
+| 8 | 恢复动作 | `applicationRestart` / `configurationReset` / `disablePlugins` | `application_restart` / `configuration_reset` / `plugins_disable_all` | ✅ |
+| 9 | 启动/失败页 | `renderer/startup.*` + `startup-document.ts` + `startup-error.ts` | `ui/index.html`（本地化、失败 fragment、Retry / Disable all / Reset / Restart，按 `profileRecovery` 门控） | ✅ |
+| 10 | 壳 UI 本地化 | `locale.ts`（en/zh-CN 全量字典 + `{name}` 格式化 + `localeGet`） | `src-tauri/src/locale.rs` + `locale_get`（页面与托盘共用一份，35 键 ×2） | ✅ |
+| 11 | 插件管理窗口 | `renderer/plugin-manager.*` + 第二窗口 + 独立 preload | `shell.rs::open_plugin_window` + `ui/plugin-manager.{html,js,css}`（同一个 `window.dsh`） | ✅ |
+| 12 | 插件操作（列表/装/卸/升级/启停/全禁） | 7 个 IPC + `project-manager.ts` | `src/desktop-plugins.ts`（复用同一 manager）+ `plugins.rs` 命令（停后端→事务→重启） | ✅ |
 | 13 | profile 准备 | `createRuntimeProjectMetadata` / `createDevelopmentProjectMetadata` / `createPluginProfile` | `src/project-manager.ts`（保留，由 prepare 脚本与方案 D 使用） | ✅ |
 | 14 | 运行时闭包准备与校验 | `prepare:runtime` / `prepare:packages` / `prepare:dsh` + `verifyDesktopRuntime` + native smoke | `scripts/prepare-tauri*.ts`（同一条流水线，输出到 `src-tauri/resources`） | ✅ |
-| 15 | 更新检查/安装 | `update-coordinator.ts`(148) + `electron-updater` + `updatesState` | — | ⛔ |
-| 16 | 签名/公证/安装器/上传 | `package-macos.ts`、`notarize-macos-disk-images.mjs`、`windows-sign.*`、`installer.nsh`、`desktop-upload-plan.ts` | `tauri.conf.json` 的 `bundle` 已启用（icons + resources）；签名/公证/安装器钩子未配 | ⛔ |
+| 15 | 更新检查/安装 | `update-coordinator.ts`(148) + `electron-updater` + `updatesState` | `update.rs`（同阶段状态机）+ `tauri-plugin-updater` + 托盘对话框；缺端点/公钥（发布配置） | ⚠️ |
+| 16 | 签名/公证/安装器/上传 | `package-macos.ts`、`notarize-macos-disk-images.mjs`、`windows-sign.*`、`installer.nsh`、`desktop-upload-plan.ts` | `bundle` 携带分类/发布者/NSIS 安装模式/macOS hardened runtime + `createUpdaterArtifacts`；签名、公证、上传需凭据与发布渠道 | ⛔ |
 | 17 | 调试端口 | `inspectPort` 传 Node inspector | —（dev 用 `dev:host`，未开 inspector） | 🔜 |
-| 18 | Shell 注入页面属性、紧急页 | `startup-document.ts` | `ui/index.html` 失败 fragment | ⚠️ |
+| 18 | Shell 注入页面属性、紧急页 | `startup-document.ts` | `shell-api.js` 安装 `window.dsh`；失败页承载 fragment 与恢复动作 | ✅ |
 
-统计：✅ 9 项，⚠️ 4 项，🔜 5 项，⛔ 2 项（其中 15、16 是本轮决定不做）。
+统计：✅ 14 项，⚠️ 1 项（更新：实现完成、待发布配置），🔜 2 项（调试端口、部分测试面对齐），⛔ 1 项（签名/公证/上传：需凭据与发布渠道）。
 
 ## 4. 同功能、不同实现（架构差异）
 

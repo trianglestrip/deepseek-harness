@@ -25,8 +25,10 @@ src
 - **renderer 传输归壳。** `desktop-transport.js` 安装 `__DSH_TRANSPORT__`，其中 `ownsHost: true`，并用 invoke 命令实现 `fetch` 与 `openStream`，正好填上被服务页面用 HTTP 与 WebSocket 填的那个接缝。壳把它作为窗口初始化脚本注入，并以不带 setter 的方式定义该全局，因为 Tauri 的 URI scheme responder 无法流式响应，而 Host 为 Electron 系父进程注入的脚本会。
 - **监督路径保留为回退。** 没有随附运行时的时候，壳 spawn checkout 里构建好的 CLI（`--profile desktop --no-open --port 0`），从 stdout 读取 `dsh web: <authenticatedUrl>` 行，并把窗口导航到该 URL；`?token=` → cookie 的交换发生在这次导航内部。
 - **两条路径各用各自的 profile。** 监督路径启动随附的 `web` profile，因为 desktop profile 的组装会关掉 Web 服务器；`DSH_DESKTOP_PROFILE` 可覆盖。Host 则把 `~/.dsh/profiles/desktop` 当作插件 profile 组装。
+- **壳拥有自己页面的 API 与文案。** `shell-api.js` 把 `window.dsh`（`locale`、`backend`、`plugins`、`updates` 以及启动页动作）安装进壳拥有的每个页面，`locale.rs` 用它回答——托盘与对话框读的也是同一份字典。插件窗口是壳自有页面，背后由 `desktop-plugins.js` 支撑，它运行 Electron 主进程曾驱动的同一个 profile 管理器。
 - **生命周期归托盘。** 关闭窗口只是隐藏，应用与其会话保持热态；托盘负责 Show、Restart dsh、Quit；`tauri-plugin-single-instance` 在第二次启动时聚焦已有窗口。两条引导路径在 Quit 时都会杀掉整棵 dsh 进程树。
-- **失败呈现在加载页上。** 引导失败，或 Host 在 readiness 之后退出，都会把窗口导航回加载页，把消息放进 fragment，并显示 Restart 按钮。
+- **失败呈现在加载页上。** 引导失败，或 Host 在 readiness 之后退出，都会把窗口导航回加载页，把消息放进 fragment；页面提供重试、重启应用，以及（当随附运行时能重建 profile 时）禁用全部第三方插件或重置桌面 profile。
+- **更新沿用 Electron 协调器的阶段。** 托盘的 Check for Updates… 用原生对话框询问，且壳只安装经过检查验证的版本。没有 `plugins.updater.{endpoints,pubkey}` 的构建报告无可用更新，而不是报错。
 - **本包不发布任何 JavaScript**（`files: []`）；壳以平台安装器的形式触达用户。
 
 ## 开发
@@ -50,7 +52,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run prepare:resources
 pnpm --filter @deepseek-ai/dsh-desktop run build
 ```
 
-`tauri.conf.json` 把 `src-tauri/resources/desktop-runtime` 作为 `desktop-runtime` 资源目录打进包，`src-tauri/resources/` 是构建产物。未准备资源的 checkout 仍能跑监督路径，因此 `tauri dev` 不需要任何打包步骤。
+`tauri.conf.json` 把 `src-tauri/resources/desktop-runtime`——随附的 Node.js 可执行文件、插件事务运行的 pnpm、已安装的 dsh 闭包、`shell-core.js` 与 `desktop-plugins.js`——作为 `desktop-runtime` 资源目录打进包，`src-tauri/resources/` 是构建产物。未准备资源的 checkout 仍能跑监督路径，因此 `tauri dev` 不需要任何打包步骤。发布构建需要填写 `plugins.updater.{endpoints,pubkey}` 以及平台签名与公证设置；本 fork 未配置它们，因此没有这些配置的构建不会安装任何更新。
 
 ## 仓库归属
 

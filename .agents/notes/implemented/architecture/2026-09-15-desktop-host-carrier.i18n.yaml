@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-15-desktop-host-carrier.md
-2026-09-15-desktop-host-carrier.md: 85f4c348fd95bd604753e44802c2deebd0cd7ef4
-2026-09-15-desktop-host-carrier.zh.md: c8aa53de48b76813562f9c5f7e3e193b00e1c10e
+2026-09-15-desktop-host-carrier.md: f6ff9e263118235bbb4569faa8845a3b3bd91952
+2026-09-15-desktop-host-carrier.zh.md: 2f0de2ceb0120c87c25399104c2eab6b8ecefdef
