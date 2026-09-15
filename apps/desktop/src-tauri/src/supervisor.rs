@@ -511,9 +511,23 @@ fn force_kill(child: &mut Child) {
 static BOOT_T0: OnceLock<std::time::Instant> = OnceLock::new();
 
 /// Trace one boot stage to stderr with seconds since the first stamp.
+/// Environment variable that turns per-request carrier logging on.
+const TRACE_ENVIRONMENT: &str = "DSH_DESKTOP_TRACE";
+
 pub fn boot_log(stage: &str) {
     let t0 = BOOT_T0.get_or_init(std::time::Instant::now);
     eprintln!("[desktop] {stage} at {:.1}s", t0.elapsed().as_secs_f64());
+}
+
+/// Log one carrier step, which is noisy enough to need asking for.
+///
+/// Set `DSH_DESKTOP_TRACE` when a page hangs: the per-request lines show which
+/// request never answered and whether its frames reached the renderer.
+/// @param stage - the step to log.
+pub fn trace_log(stage: &str) {
+    if std::env::var(TRACE_ENVIRONMENT).is_ok_and(|value| !value.is_empty()) {
+        boot_log(stage);
+    }
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::host::client::HostClient;
 use crate::host::frame::{ResponseFrame, PIPE_CHUNK_BYTES};
-use crate::supervisor::boot_log;
+use crate::supervisor::{boot_log, trace_log};
 
 /// Logs the first renderer request once, which is how a development run proves
 /// the invoke carrier reached the Host.
@@ -77,12 +77,16 @@ pub fn dsh_request_start(
     if FIRST_REQUEST.swap(false, Ordering::Relaxed) {
         boot_log(&format!("first renderer request: {} {}", args.method, args.url));
     }
+    trace_log(&format!("renderer -> {} {} body={}", args.method, args.url, args.has_body));
     let (stream_id, frames) = client.open(&args.url, &args.method, &args.headers, args.has_body)?;
     let forwarding = Arc::clone(&client);
     std::thread::spawn(move || {
+        let mut seen = 0usize;
         for frame in frames {
             let outcome = match frame {
-                ResponseFrame::Start { status, headers, has_body, .. } => on_frame.send(
+                ResponseFrame::Start { status, headers, has_body, .. } => {
+                    trace_log(&format!("renderer <- {stream_id} start {status}"));
+                    on_frame.send(
                     serde_json::json!({
                         "kind": "start",
                         "status": status,
@@ -91,16 +95,25 @@ pub fn dsh_request_start(
                     })
                     .to_string()
                     .into(),
-                ),
-                ResponseFrame::Data { data, .. } => on_frame.send(InvokeResponseBody::Raw(data)),
+                )},
+                ResponseFrame::Data { data, .. } => {
+                    seen += data.len();
+                    if let Ok(text) = std::str::from_utf8(&data) {
+                        trace_log(&format!("renderer <- {stream_id} data {} {}", data.len(), text.chars().take(160).collect::<String>()));
+                    }
+                    on_frame.send(InvokeResponseBody::Raw(data))
+                }
                 ResponseFrame::End { .. } => {
+                    trace_log(&format!("renderer <- {stream_id} end {seen} bytes"));
                     on_frame.send(serde_json::json!({ "kind": "end" }).to_string().into())
                 }
-                ResponseFrame::Error { message, .. } => on_frame.send(
+                ResponseFrame::Error { message, .. } => {
+                    trace_log(&format!("renderer <- {stream_id} error {message}"));
+                    on_frame.send(
                     serde_json::json!({ "kind": "error", "message": message })
                         .to_string()
                         .into(),
-                ),
+                )},
                 ResponseFrame::Event(_) | ResponseFrame::ControlResult { .. } => continue,
             };
             if outcome.is_err() {
@@ -193,9 +206,13 @@ pub fn buffered_fetch(
         })
         .collect();
     let has_body = !matches!(method.as_str(), "GET" | "HEAD") && !request.body().is_empty();
+    trace_log(&format!("scheme -> {} {} body={}", method, request.uri(), has_body));
     let (stream_id, frames) = match client.open(request.uri().to_string().as_str(), &method, &headers, has_body) {
         Ok(open) => open,
-        Err(error) => return failure(503, &error),
+        Err(error) => {
+            trace_log(&format!("scheme <- 503 {} {}", error, request.uri()));
+            return failure(503, &error);
+        }
     };
     if has_body {
         if let Err(error) = write_all(&client, stream_id, request.body()) {
@@ -217,18 +234,27 @@ pub fn buffered_fetch(
             ResponseFrame::Data { data, .. } => body.extend_from_slice(&data),
             ResponseFrame::End { .. } => {
                 client.release(stream_id);
+                boot_log(&format!(
+                    "scheme <- {} {} bytes {}",
+                    status,
+                    body.len(),
+                    request.uri(),
+                ));
                 return respond(status, &response_headers, body);
             }
             ResponseFrame::Error { message, .. } => {
                 client.release(stream_id);
+                trace_log(&format!("scheme <- 502 {} {}", message, request.uri()));
                 return failure(502, &message);
             }
             ResponseFrame::Event(_) | ResponseFrame::ControlResult { .. } => {}
         }
     }
     if started {
+        crate::supervisor::trace_log(&format!("scheme <- 502 unfinished {}", request.uri()));
         failure(502, "the dsh Host ended the response without completing it")
     } else {
+        crate::supervisor::trace_log(&format!("scheme <- 502 unanswered {}", request.uri()));
         failure(502, "the dsh Host did not answer the request")
     }
 }
