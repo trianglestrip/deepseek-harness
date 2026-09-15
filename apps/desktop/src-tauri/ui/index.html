@@ -47,8 +47,20 @@
     const restart = document.getElementById('restart')
     const started = Date.now()
     let failed = false
+    let backend = { phase: 'starting' }
 
     restart.textContent = messages.restartApplication
+
+    // The shell owns backend availability; the fragment carries the failure text
+    // so it survives a reload before this command answers.
+    const refreshStatus = async () => {
+      try {
+        backend = await window.__TAURI_INTERNALS__.invoke('backend_status')
+      } catch {
+        backend = { phase: 'starting' }
+      }
+      return backend
+    }
 
     const renderProgress = () => {
       if (failed) return
@@ -58,19 +70,18 @@
       message.textContent = messages.startupLoadingDescription + elapsed
     }
 
-    // The shell reports a failed or exited backend through the fragment, so the
-    // text survives a reload and a same-document navigation.
-    const renderFragment = () => {
-      const failure = new URLSearchParams(location.hash.slice(1)).get('message')
-      if (failure === null) {
+    const renderFragment = async () => {
+      const fragment = new URLSearchParams(location.hash.slice(1)).get('message')
+      if (fragment === null) {
         failed = false
         restart.hidden = true
         renderProgress()
         return
       }
       failed = true
+      const state = await refreshStatus()
       title.textContent = messages.startupFailed
-      message.textContent = failure + '\n\n' + messages.startupErrorDescription
+      message.textContent = (state.message ?? fragment) + '\n\n' + messages.startupErrorDescription
       restart.hidden = false
     }
 
@@ -78,7 +89,7 @@
       restart.hidden = true
       failed = false
       renderProgress()
-      window.__TAURI_INTERNALS__.invoke('restart_dsh').catch((error) => {
+      window.__TAURI_INTERNALS__.invoke('backend_retry').catch((error) => {
         const detail = error === null || error === undefined ? messages.unknownError : String(error)
         title.textContent = messages.startupFailed
         message.textContent = detail
@@ -86,8 +97,8 @@
       })
     })
 
-    window.addEventListener('hashchange', renderFragment)
-    renderFragment()
+    window.addEventListener('hashchange', () => { void renderFragment() })
+    void renderFragment()
     setInterval(renderProgress, 1000)
   </script>
 </body>

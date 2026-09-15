@@ -6,6 +6,7 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
+use crate::backend;
 use crate::host::bridge::HostState;
 use crate::host::client::HostClient;
 use crate::supervisor::{self, AppState, HostLaunch};
@@ -44,6 +45,7 @@ pub fn focus(app: &AppHandle) {
 /// same-document fragment change without a post-navigation script handshake.
 pub fn report_failure(app: &AppHandle, message: &str) {
     supervisor::boot_log(&format!("dsh unavailable: {message}"));
+    backend::publish_error(app, message);
     let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
         return;
     };
@@ -58,6 +60,7 @@ pub fn report_failure(app: &AppHandle, message: &str) {
 /// Start the application: the packaged Host when the application carries one,
 /// otherwise the supervised `dsh --profile desktop` CLI.
 fn boot(app: &AppHandle) {
+    backend::publish_starting(app);
     match supervisor::host_launch(app) {
         Some(launch) => boot_host(app, launch),
         None => boot_supervised(app),
@@ -85,6 +88,7 @@ fn boot_host(app: &AppHandle, launch: HostLaunch) {
             if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
                 match application_url() {
                     Ok(url) => {
+                        backend::publish_ready(app);
                         let _ = window.navigate(url);
                     }
                     Err(error) => report_failure(app, &error),
@@ -105,6 +109,7 @@ fn boot_supervised(app: &AppHandle) {
             };
             match url::Url::parse(&url) {
                 Ok(parsed) => {
+                    backend::publish_ready(app);
                     let _ = window.navigate(parsed);
                 }
                 Err(error) => report_failure(app, &format!("dsh announced an unusable URL: {error}")),

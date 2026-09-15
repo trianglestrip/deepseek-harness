@@ -5,6 +5,7 @@
 //! when the application carries a bundled runtime, and otherwise supervises
 //! `dsh --profile desktop` and loads the authenticated URL the server prints.
 
+mod backend;
 mod host;
 mod shell;
 mod supervisor;
@@ -17,9 +18,12 @@ fn main() {
             shell::focus(app);
         }))
         .manage(supervisor::AppState::default())
+        .manage(backend::BackendStatus::default())
         .manage(host::bridge::HostState::default())
         .invoke_handler(tauri::generate_handler![
             shell::restart_dsh,
+            backend::backend_status,
+            backend::backend_retry,
             host::bridge::dsh_request_start,
             host::bridge::dsh_request_body,
             host::bridge::dsh_request_end,
