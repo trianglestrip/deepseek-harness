@@ -42,17 +42,17 @@
 | `dsh-desktop:plugins-disable-all` | `plugins_disable_all` | `.disableAll()` |
 | `dsh-desktop:backend-status` | `backend_status` | `.backend.status()` ✅ |
 | `dsh-desktop:backend-retry` | `backend_retry` | `.backend.retry()` ✅ |
-| `dsh-desktop:application-restart` | `application_restart` | 启动页 `.restart()` 🔜 |
-| `dsh-desktop:configuration-reset` | `configuration_reset` | 启动页 `.resetConfiguration()` 🔜 |
-| `dsh-desktop:backend-state`（事件） | — | 轮询/事件（🔜，插件窗口需要） |
-| `dsh-desktop:updates-check` | `updates_check` | `.updates.check()` 🔜 |
-| `dsh-desktop:updates-install` | `updates_install` | `.updates.install()` 🔜 |
-| `dsh-desktop:updates-state`（事件） | — | `.updates.subscribe()` 🔜 |
-| （启动页专用）`disablePlugins` | `plugins_disable_all` 复用 | `.disablePlugins()` 🔜 |
+| `dsh-desktop:application-restart` | `application_restart` | 启动页 `.restart()` ✅ |
+| `dsh-desktop:configuration-reset` | `configuration_reset` | 启动页 `.resetConfiguration()` ✅ |
+| `dsh-desktop:backend-state`（事件） | — | 无推送事件；页面轮询 `backend_status`（Electron 为事件推送） |
+| `dsh-desktop:updates-check` | `updates_check` | `.updates.check()` ✅（无端点构建报 `idle`） |
+| `dsh-desktop:updates-install` | `updates_install` | `.updates.install()` ✅（同上） |
+| `dsh-desktop:updates-state`（事件） | — | 无推送事件；页面轮询 `updates_state`（Electron 为 `subscribe()`） |
+| （启动页专用）`disablePlugins` | `plugins_disable_all` 复用 | `.disablePlugins()` ✅ |
 
 状态类型字段保持：`DesktopBackendState`（`phase`/`message`/`profileRecovery`）、`DesktopUpdateState`（`phase`/`version`/`message`）、`DesktopPluginRecord`（按 `project-manager.ts` 现有字段）。
 
-## 3. Electron 功能清单 → 当前状态
+## 4. Electron 功能清单 → 当前状态
 
 | # | Electron 能力 | 原实现 | Tauri 归属 | 状态 |
 |---|---|---|---|---|
@@ -77,7 +77,7 @@
 
 统计：✅ 14 项，⚠️ 1 项（更新：实现完成、待发布配置），🔜 2 项（调试端口、部分测试面对齐），⛔ 1 项（签名/公证/上传：需凭据与发布渠道）。
 
-## 4. 同功能、不同实现（架构差异）
+## 5. 同功能、不同实现（架构差异）
 
 | 维度 | Electron | 当前 Tauri |
 |---|---|---|
@@ -86,35 +86,55 @@
 | 监督路径 | 无 | 有：没有打包运行时时回退到 `dsh web`（loopback + token） |
 | 引擎与体积 | Node + Chromium（`--dir` 686 MiB） | 系统 WebView + Rust（壳 debug 13 MB + bundled `desktop-runtime` 242 MB，安装体积约 255 MB） |
 | 宿主页面 | `renderer/*.html` + preload 桥 | `ui/*.html` + `__TAURI_INTERNALS__.invoke` |
+| 对话框 | `dialog.showMessageBox` | `tauri-plugin-dialog` 或自绘对话框页 |
+| 重启与退出 | `app.relaunch()` / `app.exit()` | `app.restart()` / `app.exit()` |
+| 系统语言 | `app.getLocale()` | `navigator.language`（同为系统语言来源） |
+| 第二窗口 | `BrowserWindow` + 独立 preload | `WebviewWindowBuilder` + 同一 `ui/` 目录页面 |
+| 更新器 | `electron-updater` + `app-update.yml` | `tauri-plugin-updater` + `tauri.conf.json` `plugins.updater`（清单/签名格式不同，需发布端点改造） |
 | 打包 | electron-builder + 多平台脚本 | `prepare:all` → `bundle.resources` → `tauri build`（未配签名/公证） |
 
 体积收益全部来自去掉 Chromium（约 430 MiB）；bundled 运行时闭包（node 89 MB + dsh 闭包 136 MB + pnpm 19 MB）占安装体积的 95%，壳二进制不再是体积杠杆，下一步体积优化对象是 `prepare-dsh` 产物与 pnpm，而非壳本身。
 
-## 5. 当前验证证据
+## 6. 当前验证证据
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
-| Rust 单测（含跨语言线协议向量） | `cargo test`（`apps/desktop/src-tauri`） | 13 passed |
+| Rust 单测（含跨语言线协议向量） | `cargo test`（`apps/desktop/src-tauri`） | 29 passed |
 | Host 端到端（stdin/stdout 载体） | `pnpm --filter @deepseek-ai/dsh-desktop run smoke:host` | ok：ready → 200 → 33 KB 文档含注入脚本 → shutdown 退出码 0 |
 | 窗口内 Host 路径 | `pnpm --filter @deepseek-ai/dsh-desktop run dev:host` | `host ready: dsh 0.1.5-rc.2 at 11.9s` → `first renderer request: POST http://dsh-app.localhost/api/settings/describe` |
-| 壳 UI 字典 | `pnpm vitest run apps/desktop/tests/locale.spec.ts` | 4 passed（键集一致、无空串、zh 前缀解析、占位符替换） |
+| 壳 API 桥 | `pnpm vitest run apps/desktop/tests/shell-api.spec.ts` | 通过（逐组断言命令与参数） |
+| 启动/恢复页渲染 | `pnpm vitest run apps/desktop/tests/startup-page.spec.ts` | 8 passed（fragment 渲染、`profileRecovery` 门控、动作结果） |
 | TS 类型检查 | `tsc -b tsconfig.host.json` / `tsconfig.client.json` | 0 error |
 | 文档配对 | `pnpm run verify-translation-pairing` | 通过（README 与 Agent Note） |
 
 **已被证伪的旧假设**：`capabilities.json` 是 `{}` 并不阻塞壳自身命令——Tauri 2.11.5 只对 `plugin:*` 命令走 `resolve_access`，app 命令不经 ACL；窗口内的首个 renderer 请求已证明这条路径可用。
 
-## 6. 剩余工作（按顺序）
+## 7. 剩余工作（按顺序）
 
 | 阶段 | 内容 | 验收方式 |
 |---|---|---|
-| 1c | 恢复动作：`restart_application` / `reset_desktop` / `disable_all_plugins` + 失败页按钮 | Rust 单测 + 手工触发失败（指向不存在的 profile）后按钮可用 |
-| 2a | 方案 D 插件 CLI：`apps/desktop/src/desktop-plugins.ts` + tsdown 单入口 + Rust 调用（用 resources 里的 Node 与内置 pnpm） | 单测覆盖参数校验与 profile 路径；在 dev 运行时上真实装/卸一个本地 tarball 插件 |
-| 2b | 插件管理窗口：第二窗口 + `ui/plugin-manager.html` + 走 2a 的命令 | 手工冒烟：列/装/卸/启停/全禁 + 后端自动重启 |
-| 2c | 菜单两项：Desktop Plugins…（打开窗口）、恢复项 | 手工冒烟 |
-| 3 | 窗口显示时机（ready 后再 show）与导航失败页（#8） | 手工冒烟 + 失败路径日志 |
-| — | 更新、签名/公证/安装器 | ⛔ 本轮不做 |
+| P5 | 发布工程：签名/公证、NSIS 安装/卸载钩子（卸载保留 `DSH_HOME`）、上传计划、更新端点与公钥 | 手工：本地产出安装包并安装/卸载验证 `DSH_HOME` 保留；无凭据时只能验证失败分支与配置解析 |
+| P6 | 测试面对齐：逐个补齐 Electron 的 16 个 spec 对应行为 | 见下方测试对齐表 |
 
-## 7. 本机环境注意（不影响仓库本身）
+依赖：P5 依赖外部构件（更新端点、证书、发布渠道）；没有它们时只能完成实现与失败分支，不能宣称对齐。
+
+### 测试对齐表（Electron spec → 对应实现）
+
+| Electron spec（行数） | 对应测试 | 状态 |
+|---|---|---|
+| `backend-controller.spec.ts`(170) | `backend.rs` 单测（状态序列化与发布）+ `supervisor.rs` 单测 | ⚠️ 重启串行化（`shell.rs::restart`）无单测面 |
+| `locale.spec.ts`(23) | `locale.rs` Rust 单测（5 个：键集、占位符、语言回退） | ✅ |
+| `startup-renderer.spec.ts`(175) | `tests/startup-page.spec.ts`（8 个 jsdom；页面脚本提取为 `ui/startup.js`） | ✅ |
+| `plugin-manager.spec.ts`(33) | `tests/desktop-plugins.spec.ts`（CLI 参数与记录映射） | ✅ |
+| `main-startup.spec.ts`(368) | Rust 单测：boot 选择（packaged/linked/监督）、`application_url`、失败 fragment 组合 | ⚠️ 导航时机与失败页跳转靠手工冒烟 |
+| `single-instance.spec.ts`(32) | 手工冒烟（`tauri-plugin-single-instance` 提供，无单测面） | ⚠️ |
+| `preload-app.spec.ts`(39) | `tests/shell-api.spec.ts`（`window.dsh` 形状逐组断言） | ✅ |
+| `update-coordinator.spec.ts`(102) | `update.rs` 单测（阶段序列化、安装守卫：只装检查宣布过的版本） | ⚠️ re-check 与下载路径需 AppHandle，未单测 |
+| `desktop-auto-update-environment.spec.ts`(89) | — | N/A：Tauri 更新配置由 `tauri.conf.json` 构建期注入，无运行时环境变量面 |
+| `package-target.spec.ts`(126) / `package-macos.spec.ts`(190) / `macos-signature.spec.ts`(242) / `macos-signing-walk.spec.ts`(36) / `windows-sign.spec.ts`(226) / `desktop-upload-plan.spec.ts`(195) | 打包基础面已有：`tests/desktop-build-paths.spec.ts`、`tests/macos-runtime.spec.ts`、`tests/macos-notarized-application.spec.ts`、`tests/prepare-package-set.spec.ts`、`tests/core-package-set.spec.ts`、`tests/runtime-file-policy.spec.ts` | ⛔ 签名/公证/上传随 P5，fork 未配置凭据 |
+| `host-protocol.spec.ts` / `host-process.spec.ts` | 仍在树上（upstream），由 Rust 侧黄金向量 + `smoke:host` 覆盖 | ✅ |
+
+## 8. 本机环境注意（不影响仓库本身）
 
 - 本机 `npm` 安装损坏（缺 `npm-cli.js`/`npm-prefix.js`），而仓库脚本内部调用 `npm run …`；用 PATH shim（`npm` → `pnpm`，需同时提供 `npm.cmd`）才能跑 `pnpm run typecheck` 与 pre-push hook。
 - lefthook 的 `third-party notices` 钩子在本机必然失败：`node_modules` 缺 lockfile 要求的 `@anthropic-ai/claude-agent-sdk-win32-x64@0.3.263`，且 `pnpm install --frozen-lockfile --force` 报 "Already up to date" 不补装。涉及 `pnpm-lock.yaml`/`apps/*/src/**` 的提交需 `--no-verify`，或在一致的 `node_modules` 上重跑该生成器。
