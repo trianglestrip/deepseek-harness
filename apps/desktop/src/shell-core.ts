@@ -354,7 +354,7 @@ if (import.meta.main) {
     projectDir,
     allowLinked ? LINKED_PROFILE_INSPECT_PORT : undefined,
     process.env,
-    (error) => { process.stderr.write(`dsh shell core: host failure: ${error.message}\n`) },
+    (error) => { process.stderr.write(`dsh shell core: host failure: ${error.stack ?? error.message}\n`) },
   )
   const code = await runShellCore(host, createStdioStream())
   process.exit(code)

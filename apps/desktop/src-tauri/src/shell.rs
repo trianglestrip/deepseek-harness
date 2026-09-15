@@ -16,8 +16,8 @@ use crate::supervisor::{self, AppState, HostLaunch};
 pub const MAIN_WINDOW: &str = "main";
 /// The window label of the desktop plugin manager.
 pub const PLUGIN_WINDOW: &str = "plugins";
-/// Loading-page fragment carrying the failure text of an exited server.
-const MESSAGE_FRAGMENT: &str = "message=";
+/// Loading-page fragment parameter carrying the failure text of an exited server.
+const MESSAGE_FRAGMENT_KEY: &str = "message";
 /// Window title, also the initial document title the loading page replaces.
 const WINDOW_TITLE: &str = "DeepSeek Harness Desktop";
 /// Plugin window title, matching the replaced Electron shell.
@@ -77,12 +77,25 @@ pub fn report_failure(app: &AppHandle, message: &str) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
         return;
     };
-    let Some(mut url) = app.state::<AppState>().initial_url() else {
+    let Some(url) = app.state::<AppState>().initial_url() else {
         return;
     };
-    url.set_fragment(Some(&format!("{MESSAGE_FRAGMENT}{message}")));
     let _ = window.show();
-    let _ = window.navigate(url);
+    let _ = window.navigate(failure_url(url, message));
+}
+
+/// The loading-page URL that renders `message` when it loads.
+///
+/// The text rides a form-urlencoded fragment — the shape the page's
+/// `URLSearchParams` decodes — so multi-line diagnostics survive the URL, which
+/// would otherwise strip their newlines, and render on load and on a
+/// same-document fragment change without a post-navigation script handshake.
+fn failure_url(mut initial: url::Url, message: &str) -> url::Url {
+    let fragment = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair(MESSAGE_FRAGMENT_KEY, message)
+        .finish();
+    initial.set_fragment(Some(&fragment));
+    initial
 }
 
 /// Start the application: the packaged Host when the application carries one,
@@ -287,9 +300,65 @@ pub fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
 
 /// Resident mode: closing the window hides it instead of ending the session.
 pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
-    supervisor::boot_log(&format!("window event {}: {event:?}", window.label()));
+    // Size, position, and theme changes are frequent and never needed to tell a
+    // stuck window from a working one; the rest are logged.
+    match event {
+        tauri::WindowEvent::Resized(_)
+        | tauri::WindowEvent::Moved(_)
+        | tauri::WindowEvent::ScaleFactorChanged { .. }
+        | tauri::WindowEvent::ThemeChanged(_) => {}
+        other => supervisor::boot_log(&format!("window event {}: {other:?}", window.label())),
+    }
     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
         api.prevent_close();
         let _ = window.hide();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use url::form_urlencoded;
+
+    #[test]
+    fn addresses_the_application_page_on_the_custom_scheme() {
+        let url = application_url().unwrap();
+        let (scheme, host) = if cfg!(any(windows, target_os = "android")) {
+            // Windows and Android serve custom protocols as http://<scheme>.localhost.
+            ("http", "dsh-app.localhost")
+        } else {
+            ("dsh-app", "localhost")
+        };
+        assert_eq!(url.scheme(), scheme, "{url}");
+        assert_eq!(url.host_str(), Some(host), "{url}");
+        assert!(url.path().ends_with("index.html"), "{url}");
+    }
+
+    /// Decode the fragment the way the loading page's `URLSearchParams` does.
+    fn fragment_message(url: &url::Url) -> Option<String> {
+        url.fragment().map(|fragment| {
+            form_urlencoded::parse(fragment.as_bytes())
+                .find(|(key, _)| key == MESSAGE_FRAGMENT_KEY)
+                .map(|(_, value)| value.into_owned())
+                .unwrap_or_default()
+        })
+    }
+
+    #[test]
+    fn carries_the_failure_text_in_the_fragment() {
+        let initial = url::Url::parse("http://dsh-app.localhost/index.html").unwrap();
+        let url = failure_url(initial, "composition failed");
+        assert_eq!(url.path(), "/index.html");
+        assert_eq!(fragment_message(&url).as_deref(), Some("composition failed"));
+    }
+
+    #[test]
+    fn keeps_a_multiline_failure_and_replaces_an_existing_fragment() {
+        let initial = url::Url::parse("http://dsh-app.localhost/index.html#message=old").unwrap();
+        let url = failure_url(initial, "boot failed: no profile\nsee the log");
+        assert_eq!(
+            fragment_message(&url).as_deref(),
+            Some("boot failed: no profile\nsee the log"),
+        );
     }
 }
