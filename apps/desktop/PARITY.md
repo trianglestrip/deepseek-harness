@@ -29,6 +29,29 @@
 | 7 | 运行时闭包 | Node 运行时 + dsh 闭包 + `desktop-runtime` 描述符与校验 | `runtime-tree.ts` + native payload smoke |
 | 8 | CLI 契约 | 监督路径的 `dsh web: <authenticatedUrl>` readiness 行；`--profile desktop` 归桌面应用独占（`apps/cli/src/args.ts:68` `rejectElectronProfile`） | Rust `parse_launch_line` 单测 + `packages/bundle/web-app/tests` |
 
+## 3. 接口契约（Electron 通道 → Rust 命令 → 页面 API）
+
+| Electron 通道（`DESKTOP_IPC`） | Rust 命令 | 页面 API |
+|---|---|---|
+| `dsh-desktop:locale-get` | `locale_get` | `window.dsh.locale()` |
+| `dsh-desktop:plugins-list` | `plugins_list` | `window.dsh.plugins.list()` |
+| `dsh-desktop:plugins-add` | `plugins_add(spec)` | `.add(spec)` |
+| `dsh-desktop:plugins-remove` | `plugins_remove(name)` | `.remove(name)` |
+| `dsh-desktop:plugins-update` | `plugins_update(name, version)` | `.update(name, version)` |
+| `dsh-desktop:plugins-toggle` | `plugins_toggle(name, enabled)` | `.toggle(name, enabled)` |
+| `dsh-desktop:plugins-disable-all` | `plugins_disable_all` | `.disableAll()` |
+| `dsh-desktop:backend-status` | `backend_status` | `.backend.status()` ✅ |
+| `dsh-desktop:backend-retry` | `backend_retry` | `.backend.retry()` ✅ |
+| `dsh-desktop:application-restart` | `application_restart` | 启动页 `.restart()` 🔜 |
+| `dsh-desktop:configuration-reset` | `configuration_reset` | 启动页 `.resetConfiguration()` 🔜 |
+| `dsh-desktop:backend-state`（事件） | — | 轮询/事件（🔜，插件窗口需要） |
+| `dsh-desktop:updates-check` | `updates_check` | `.updates.check()` 🔜 |
+| `dsh-desktop:updates-install` | `updates_install` | `.updates.install()` 🔜 |
+| `dsh-desktop:updates-state`（事件） | — | `.updates.subscribe()` 🔜 |
+| （启动页专用）`disablePlugins` | `plugins_disable_all` 复用 | `.disablePlugins()` 🔜 |
+
+状态类型字段保持：`DesktopBackendState`（`phase`/`message`/`profileRecovery`）、`DesktopUpdateState`（`phase`/`version`/`message`）、`DesktopPluginRecord`（按 `project-manager.ts` 现有字段）。
+
 ## 3. Electron 功能清单 → 当前状态
 
 | # | Electron 能力 | 原实现 | Tauri 归属 | 状态 |
@@ -61,9 +84,11 @@
 | 传输载体 | 描述符 3/4 + Node IPC（协议 v3） | `stdio` 帧（壳 ↔ shell core）→ 描述符 3/4 + Node IPC（core ↔ Host，upstream 原样）；`ready`/`fatal`/`shutdown`/`controlResult` 在壳这一侧走帧 |
 | 渲染层通路 | `protocol.handle` 的 Node 流式代理 + `fetch('/.dsh/remote-stream')` | 静态资产走 buffered custom scheme（Tauri 的 responder 必须完整缓冲），流走 invoke + Channel |
 | 监督路径 | 无 | 有：没有打包运行时时回退到 `dsh web`（loopback + token） |
-| 引擎与体积 | Node + Chromium（`--dir` 686 MiB） | 系统 WebView + Rust（debug 13 MB） |
+| 引擎与体积 | Node + Chromium（`--dir` 686 MiB） | 系统 WebView + Rust（壳 debug 13 MB + bundled `desktop-runtime` 242 MB，安装体积约 255 MB） |
 | 宿主页面 | `renderer/*.html` + preload 桥 | `ui/*.html` + `__TAURI_INTERNALS__.invoke` |
 | 打包 | electron-builder + 多平台脚本 | `prepare:all` → `bundle.resources` → `tauri build`（未配签名/公证） |
+
+体积收益全部来自去掉 Chromium（约 430 MiB）；bundled 运行时闭包（node 89 MB + dsh 闭包 136 MB + pnpm 19 MB）占安装体积的 95%，壳二进制不再是体积杠杆，下一步体积优化对象是 `prepare-dsh` 产物与 pnpm，而非壳本身。
 
 ## 5. 当前验证证据
 

@@ -132,7 +132,7 @@ apps/desktop/
 | `app.getLocale()` | `navigator.language` | ✅（同为系统语言来源） |
 | `BrowserWindow` 第二窗口 + 独立 preload | `WebviewWindowBuilder` + 同一 `ui/` 目录页面 | ✅ |
 | `electron-updater` + `app-update.yml` | `tauri-plugin-updater` + `tauri.conf.json` `plugins.updater` | ⚠️ 清单/签名格式不同，需要发布端点改造 |
-| `electron-builder`（`--dir` 686 MiB） | Tauri bundle（系统 WebView，13 MB debug） | ⚠️ 产物形态不同，安装体验需重新验证 |
+| `electron-builder`（`--dir` 686 MiB） | Tauri bundle（系统 WebView + Rust 壳 13 MB debug + bundled `desktop-runtime` 242 MB，安装约 255 MB；收益来自去 Chromium） | ⚠️ 产物形态不同，安装体验需重新验证 |
 
 ## 7. 测试对齐表（Electron spec → 对应实现）
 
