@@ -76,8 +76,11 @@ let buffer = Buffer.alloc(0)
 let nextStream = 1
 /** Request ids awaiting a response, with the bytes each response carried. */
 const pending = new Map<number, { status: number; body: Buffer }>()
+/** Stream endpoint to open once the core reports readiness, with lines to print. */
+const streamEndpoint = option('stream', '')
+let streamLines = 0
 
-function request(url: string, method: string, body?: string): void {
+function request(url: string, method: string, body?: string, keepOpen = false): void {
   const id = nextStream
   nextStream += 1
   pending.set(id, { status: 0, body: Buffer.alloc(0) })
@@ -93,7 +96,11 @@ function request(url: string, method: string, body?: string): void {
     child.stdin.write(frame(REQUEST_DATA, id, Buffer.from(body)))
     child.stdin.write(frame(REQUEST_END, id, Buffer.alloc(0)))
   }
+  if (keepOpen) openStreams.add(id)
 }
+
+/** Requests that must not be answered before the run reports, such as event streams. */
+const openStreams = new Set<number>()
 
 child.stderr.on('data', (chunk: Buffer) => process.stderr.write(chunk))
 child.stdout.on('data', (chunk: Buffer) => {
@@ -109,18 +116,35 @@ child.stdout.on('data', (chunk: Buffer) => {
     if (type === 5) {
       const event = JSON.parse(payload.toString('utf8')) as { event: string; dshVersion?: string; message?: string }
       process.stdout.write(`core smoke: event ${event.event} ${event.dshVersion ?? event.message ?? ''}\n`)
-      if (event.event === 'ready') request('dsh-app://app/index.html', 'GET')
+      if (event.event === 'ready') {
+        if (streamEndpoint !== '') {
+          request('dsh-app://app/.dsh/remote-stream', 'POST', JSON.stringify({ endpoint: streamEndpoint, payload: { args: {} } }), true)
+        } else {
+          request('dsh-app://app/index.html', 'GET')
+        }
+      }
       if (event.event === 'fatal') process.exitCode = 1
       continue
     }
     const entry = pending.get(id)
     if (entry === undefined) continue
     if (type === 1) entry.status = (JSON.parse(payload.toString('utf8')) as { status: number }).status
-    if (type === 2) entry.body = Buffer.concat([entry.body, payload])
+    if (type === 2) {
+      entry.body = Buffer.concat([entry.body, payload])
+      if (openStreams.has(id) && streamLines < 3) {
+        streamLines += 1
+        const text = payload.toString('utf8').trim()
+        process.stdout.write(`core smoke: chunk ${String(streamLines)} ${text.slice(0, 300)}\n`)
+        if (streamLines >= 3) {
+          child.stdin.write(encodeShellCoreRequestControl(1, 'shutdown'))
+        }
+      }
+    }
     if (type === 3) {
       const text = entry.body.toString('utf8')
       process.stdout.write(`core smoke: ${String(entry.status)} ${String(entry.body.byteLength)} bytes html=${String(text.includes('<html'))}\n`)
       pending.delete(id)
+      if (openStreams.delete(id)) continue
       if (entry.status !== 200) {
         process.exitCode = 1
       } else if (id === 1) {
