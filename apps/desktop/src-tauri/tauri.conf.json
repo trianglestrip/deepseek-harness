@@ -4,7 +4,7 @@
   "version": "0.1.5-rc.2",
   "identifier": "ai.deepseek.dsh.desktop",
   "build": {
-    "frontendDist": "./loading"
+    "frontendDist": "./ui"
   },
   "app": {
     "windows": [

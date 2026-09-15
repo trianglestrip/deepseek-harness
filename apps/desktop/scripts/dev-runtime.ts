@@ -63,8 +63,14 @@ function linkPackages(modules: string, packages: readonly WorkspacePackage[], ba
 
 function main(): void {
   const packages = workspacePackages()
-  rmSync(OUTPUT, { recursive: true, force: true })
   const backend = process.platform === 'win32' ? 'junction' : 'dir'
+  try {
+    rmSync(OUTPUT, { recursive: true, force: true })
+  } catch (error) {
+    // Windows refuses to remove a directory a running Host still holds as its
+    // working directory; the links below are idempotent, so reuse the tree.
+    process.stderr.write(`desktop dev runtime: reusing the existing tree (${String(error)})\n`)
+  }
   mkdirSync(RUNTIME, { recursive: true })
   writeFileSync(join(RUNTIME, 'package.json'), `${JSON.stringify({ name: 'dsh-desktop-dev-runtime', private: true }, undefined, 2)}\n`)
   linkPackages(join(RUNTIME, 'node_modules'), packages, backend)

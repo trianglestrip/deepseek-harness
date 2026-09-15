@@ -17,6 +17,7 @@
     main { max-width: 640px; padding: 2rem; text-align: center; }
     h1 { font-size: 1.2rem; font-weight: 600; }
     p { color: #a8a8b0; white-space: pre-wrap; word-break: break-word; }
+    .actions { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
     button {
       font: inherit;
       color: #e8e8ea;
@@ -31,44 +32,56 @@
 </head>
 <body>
   <main>
-    <h1>DeepSeek Harness Desktop</h1>
-    <p id="message">Starting the dsh web server…</p>
-    <button id="restart" hidden>Restart dsh</button>
+    <h1 id="title">DeepSeek Harness Desktop</h1>
+    <p id="message"></p>
+    <div class="actions">
+      <button id="restart" hidden></button>
+    </div>
   </main>
-  <script>
+  <script type="module">
+    import { resolveLocale } from './locale.js'
+
+    const { messages } = resolveLocale(navigator.language)
+    const title = document.getElementById('title')
     const message = document.getElementById('message')
     const restart = document.getElementById('restart')
     const started = Date.now()
     let failed = false
 
+    restart.textContent = messages.restartApplication
+
     const renderProgress = () => {
       if (failed) return
       const seconds = Math.floor((Date.now() - started) / 1000)
-      message.textContent =
-        'Starting the dsh web server…' + (seconds === 0 ? '' : ' (' + String(seconds) + 's)')
+      const elapsed = seconds === 0 ? '' : ' (' + String(seconds) + 's)'
+      title.textContent = messages.startupLoading
+      message.textContent = messages.startupLoadingDescription + elapsed
     }
 
-    // The shell reports a failed or exited server through the fragment, so the
+    // The shell reports a failed or exited backend through the fragment, so the
     // text survives a reload and a same-document navigation.
     const renderFragment = () => {
       const failure = new URLSearchParams(location.hash.slice(1)).get('message')
       if (failure === null) {
         failed = false
+        restart.hidden = true
         renderProgress()
         return
       }
       failed = true
-      message.textContent = failure
+      title.textContent = messages.startupFailed
+      message.textContent = failure + '\n\n' + messages.startupErrorDescription
       restart.hidden = false
     }
 
     restart.addEventListener('click', () => {
       restart.hidden = true
       failed = false
-      message.textContent = 'Restarting the dsh web server…'
+      renderProgress()
       window.__TAURI_INTERNALS__.invoke('restart_dsh').catch((error) => {
-        failed = true
-        message.textContent = 'Restart failed: ' + String(error)
+        const detail = error === null || error === undefined ? messages.unknownError : String(error)
+        title.textContent = messages.startupFailed
+        message.textContent = detail
         restart.hidden = false
       })
     })
