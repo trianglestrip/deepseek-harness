@@ -9,7 +9,7 @@
 | 层 | Electron | 当前 Tauri | 是否"重写" |
 |---|---|---|---|
 | 壳（原 main 进程） | `src/main.ts`(521) + `preload*.ts` + `host-process.ts` + `renderer/`，15 个 IPC 通道 | `src-tauri/src/{shell,supervisor,backend}.rs` + `host/{client,frame,bridge}.rs` + `ui/` | ✅ 用 Rust 重写这一层 |
-| 后端（子进程） | `apps/desktop-host`：组装 desktop profile、资产、`/api`、帧协议 | **同一个包，未重写**：只增量加了 `stdio` 载体与注入脚本覆盖 | ⛔ 不重写 |
+| 后端（子进程） | `apps/desktop-host`：组装 desktop profile、资产、`/api`、帧协议 | **与 upstream 逐字节相同**（fork 改动为 0） | ⛔ 不重写 |
 | 应用逻辑（原住在 main 里） | `src/project-manager.ts`(611) + `profile-packages.ts` + `runtime-tree.ts` | 方案 D：薄 Node CLI（`apps/desktop/src/desktop-plugins.ts`，待做） | 🔜 换家，不重写 |
 
 **要点**：换壳 = 换父进程。`desktop-host` 是大 Electron main 的子进程，它自己不该被重写；而 `project-manager` 虽住在 main 里，内容却是应用逻辑，必须换个家。
@@ -35,7 +35,7 @@
 |---|---|---|---|---|
 | 1 | 窗口、关窗常驻、单实例 | `main.ts` `createWindow`、`single-instance.ts` | `shell.rs`（`on_window_event`、`tauri-plugin-single-instance`） | ✅ |
 | 2 | 托盘与菜单 | 原生应用菜单（`Application` → Desktop Plugins… / Check for Updates…） | `shell.rs` 托盘（Show / Restart dsh / Quit）；两项业务菜单待补 | ⚠️ |
-| 3 | 打包 Host 私有载体 | `host-process.ts` + fd3/4 + Node IPC | `host/client.rs` + `frame.rs` + `bridge.rs` + `transport/desktop-transport.js` | ✅ |
+| 3 | 打包 Host 私有载体 | `host-process.ts` + fd3/4 + Node IPC | `src/shell-core.ts`（复用 `host-process.ts`）+ `src-tauri/src/host/{client,frame,bridge}.rs` + `transport/desktop-transport.js` | ✅ |
 | 4 | 渲染层 transport 注入 | `DESKTOP_TRANSPORT_SCRIPT` 内联 | Host 注入 `__DSH_TRANSPORT__`（`ownsHost` + `fetch` + `openStream`） | ✅ |
 | 5 | 监督回退路径 | 无（Electron 只有 Host 路径） | `supervisor.rs`：`dsh web` + readiness 行解析 + 崩溃监视 + 进程组 | ✅（Tauri 独有） |
 | 6 | 后端状态机 | `backend-controller.ts`(148)：`starting/ready/error{message,profileRecovery}` + 串行重试 | `backend.rs`（状态机 + `profile_recovery` 判定） | ✅ |
@@ -58,7 +58,7 @@
 
 | 维度 | Electron | 当前 Tauri |
 |---|---|---|
-| 传输载体 | 描述符 3/4 + Node IPC（协议 v3） | `stdio`：stdin/stdout 承载帧，`ready`/`fatal`/`shutdown`/`controlResult` 走帧；`fd` 契约保持逐字节不变 |
+| 传输载体 | 描述符 3/4 + Node IPC（协议 v3） | `stdio` 帧（壳 ↔ shell core）→ 描述符 3/4 + Node IPC（core ↔ Host，upstream 原样）；`ready`/`fatal`/`shutdown`/`controlResult` 在壳这一侧走帧 |
 | 渲染层通路 | `protocol.handle` 的 Node 流式代理 + `fetch('/.dsh/remote-stream')` | 静态资产走 buffered custom scheme（Tauri 的 responder 必须完整缓冲），流走 invoke + Channel |
 | 监督路径 | 无 | 有：没有打包运行时时回退到 `dsh web`（loopback + token） |
 | 引擎与体积 | Node + Chromium（`--dir` 686 MiB） | 系统 WebView + Rust（debug 13 MB） |

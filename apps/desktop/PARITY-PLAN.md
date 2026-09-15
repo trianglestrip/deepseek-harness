@@ -26,7 +26,7 @@ Electron 的父半是 Node（`host-process.ts` 427 行：fd3/fd4 + Node IPC + �
 | 架构接近度 | 高（换父进程语言） | **最高（父子关系与协议形状与 Electron 完全一致）** |
 | 代价 | 维护 2 个上游文件的增量 | 多一个常驻 Node 进程；Rust↔core 仍需一条通道 |
 
-**建议**：若"架构保持一样"按字面执行 → 选 **B**；若接受"父进程语言不同、协议等价" → 保持 **A**（现状已具备）。本计划其余部分与两者兼容，只有 §3 里 `host/` 与 `upstream/` 的落点不同。
+**已定：B1。** 选 B（fork 自有的 Node shell core，复用 upstream `host-process.ts`），并以 **B1** 解决注入：Rust 用 `WebviewWindowBuilder::initialization_script` 注入 `desktop-transport.js`，把 `__DSH_TRANSPORT__` 定义成不可写，Host 自己为 Electron 系父进程注入的脚本因此无法替换它；主窗口改由 `shell.rs` 创建（`tauri.conf.json` 的 `app.windows[].create = false`）。落地结果：`apps/desktop-host` 与 upstream 逐字节相同，fork 只拥有 `apps/desktop`。
 
 ## 2. 模块映射总表
 

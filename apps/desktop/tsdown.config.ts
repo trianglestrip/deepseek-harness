@@ -1,12 +1,17 @@
 import { defineConfig } from 'tsdown'
 
 /**
- * The shell core is the only runtime program this package ships: the Tauri
- * shell spawns it under the bundled Node.js executable, and it bundles the
- * upstream parent half (`host-process.ts`) with the core's own wire codec.
+ * Two runtime programs this package ships, both spawned by the Tauri shell
+ * under the bundled Node.js executable: the shell core, which bundles the
+ * upstream parent half (`host-process.ts`) with its own wire codec, and the
+ * plugin transactions, which reuse the profile manager the Electron main
+ * process drove.
  */
 export default defineConfig({
-  entry: { 'shell-core': 'lib/types/shell-core.js' },
+  entry: {
+    'shell-core': 'lib/types/shell-core.js',
+    'desktop-plugins': 'lib/types/desktop-plugins.js',
+  },
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',

@@ -11,16 +11,18 @@ The shell renders the harness web GUI in the operating system's webview. It serv
 ```
 src-tauri/src
   ├─ shell.rs          window, tray, single instance, resident mode, boot choice
-  ├─ supervisor.rs     packaged-runtime and checkout resolution, `dsh` supervision
+  ├─ supervisor.rs     shell-core and checkout resolution, `dsh` supervision
   ├─ backend.rs        backend availability, retry, and recovery actions
   └─ host/
        ├─ frame.rs     wire codec; golden vectors live in src-tauri/tests/fixtures
        ├─ client.rs    Node child, framed streams, readiness handshake, teardown
        └─ bridge.rs    invoke commands and the `dsh-app://` asset handler
+src
+  └─ shell-core.ts     Node parent of the installed Host (upstream `host-process.ts`)
 ```
 
-- **The packaged Host is the primary path.** When the application resources carry `desktop-runtime/{node,dsh,desktop-transport.js}`, the shell spawns the installed `@deepseek-ai/dsh-desktop-host` under the bundled upstream Node.js executable with `DSH_DESKTOP_TRANSPORT=stdio`, waits for the readiness event it frames on the response stream, and navigates the window to `dsh-app://localhost/index.html` (`http://dsh-app.localhost/index.html` on Windows). Unary RPC and Gateway streams then cross the shell's private framed carrier, so the desktop composition opens no Web server and no loopback port, and no token URL exists.
-- **The renderer transport is injected by the Host.** `desktop-transport.js` installs `__DSH_TRANSPORT__` with `ownsHost: true` plus `fetch` and `openStream` over the invoke commands, matching the seam a served page fills with HTTP and WebSocket.
+- **A shell core parents the Host.** When the application resources carry `desktop-runtime/{node,dsh,shell-core.js}`, the shell spawns the core under the bundled upstream Node.js executable, and the core drives the installed `@deepseek-ai/dsh-desktop-host` over descriptor 3 and 4 plus the Node IPC channel the Host expects. Unary RPC and Gateway streams cross the shell's private framed carrier, so the desktop composition opens no Web server and no loopback port, and no token URL exists; `apps/desktop-host` itself carries no fork change.
+- **The renderer transport is the shell's.** `desktop-transport.js` installs `__DSH_TRANSPORT__` with `ownsHost: true` plus `fetch` and `openStream` over the invoke commands, matching the seam a served page fills with HTTP and WebSocket. The shell injects it as a window initialization script and defines the global without a setter, because Tauri's URI-scheme responder cannot stream and the script the Host injects for an Electron-family parent would.
 - **The supervisor path stays as the fallback.** Without a packaged runtime the shell spawns the checkout's built CLI with `--profile desktop --no-open --port 0`, reads the `dsh web: <authenticatedUrl>` line from its stdout, and navigates the window to that URL; the `?token=` → cookie exchange happens inside that first navigation.
 - **Both paths use their own profile.** The supervised CLI boots the shipped `web` profile, because the desktop profile's composition turns the Web server off; `DSH_DESKTOP_PROFILE` overrides the choice. The Host composes `~/.dsh/profiles/desktop` as its plugin profile.
 - **Lifecycle is the tray's.** Closing the window hides it, so the application and its session stay warm; the tray owns Show, Restart dsh, and Quit; `tauri-plugin-single-instance` focuses the existing window on a second launch. Both boot paths kill the whole dsh tree on Quit.
@@ -32,7 +34,8 @@ src-tauri/src
 ```sh
 pnpm install
 pnpm run build
-pnpm --filter @deepseek-ai/dsh-desktop run dev
+pnpm --filter @deepseek-ai/dsh-desktop run dev        # supervised fallback, built CLI
+pnpm --filter @deepseek-ai/dsh-desktop run dev:host   # the packaged path from a linked runtime
 ```
 
 Requires Node `^22.19 || >=24` and a Rust toolchain with the Tauri 2 prerequisites.

@@ -21,7 +21,8 @@ const KILL_POLL_MS: u64 = 50;
 /// Probe interval of the crashed-server watch.
 const WATCH_POLL_MS: u64 = 500;
 /// Directory name of the bundled runtime inside the application resources.
-const RUNTIME_DIRECTORY: &str = "desktop-runtime";
+/// Directory inside the application resources that carries the runtime.
+pub const RUNTIME_DIRECTORY: &str = "desktop-runtime";
 /// Shell core entry the bundled Node.js executable runs.
 const SHELL_CORE_FILE: &str = "shell-core.js";
 
@@ -188,6 +189,11 @@ pub fn resolve_profile_from(override_value: Option<&str>, _home: &Path) -> Strin
     // `web` profile. A `desktop` profile belongs to the packaged Host, whose
     // composition turns the webserver off.
     "web".to_string()
+}
+
+/// Desktop plugin profile the Host and the plugin transactions share.
+pub fn desktop_profile_dir() -> PathBuf {
+    harness_home().join("profiles").join("desktop")
 }
 
 /// The shared Harness home, matching the `dsh` CLI default.

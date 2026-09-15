@@ -11,16 +11,18 @@ DeepSeek Harness Desktop：承载 dsh 应用的 Tauri 壳。
 ```
 src-tauri/src
   ├─ shell.rs          window, tray, single instance, resident mode, boot choice
-  ├─ supervisor.rs     packaged-runtime and checkout resolution, `dsh` supervision
+  ├─ supervisor.rs     shell-core and checkout resolution, `dsh` supervision
   ├─ backend.rs        backend availability, retry, and recovery actions
   └─ host/
        ├─ frame.rs     wire codec; golden vectors live in src-tauri/tests/fixtures
        ├─ client.rs    Node child, framed streams, readiness handshake, teardown
        └─ bridge.rs    invoke commands and the `dsh-app://` asset handler
+src
+  └─ shell-core.ts     Node parent of the installed Host (upstream `host-process.ts`)
 ```
 
-- **随附 Host 是主路径。** 当应用资源携带 `desktop-runtime/{node,dsh,desktop-transport.js}` 时，壳在随附的 upstream Node.js 可执行文件下 spawn 已安装的 `@deepseek-ai/dsh-desktop-host`，传入 `DSH_DESKTOP_TRANSPORT=stdio`，等待它在响应流上分帧的就绪事件，然后把窗口导航到 `dsh-app://localhost/index.html`（Windows 上为 `http://dsh-app.localhost/index.html`）。此后一元 RPC 与 Gateway 流都走壳的私有分帧载体，因此桌面 composition 不打开 Web 服务器、不监听 loopback，也不存在 token URL。
-- **renderer 传输由 Host 注入。** `desktop-transport.js` 安装 `__DSH_TRANSPORT__`，其中 `ownsHost: true`，并用 invoke 命令实现 `fetch` 与 `openStream`，正好填上被服务页面用 HTTP 与 WebSocket 填的那个接缝。
+- **shell core 充当 Host 的父进程。** 当应用资源携带 `desktop-runtime/{node,dsh,shell-core.js}` 时，壳在随附的 upstream Node.js 可执行文件下 spawn core，由 core 通过 Host 期望的描述符 3、4 与 Node IPC 通道驱动已安装的 `@deepseek-ai/dsh-desktop-host`。一元 RPC 与 Gateway 流走壳的私有分帧载体，因此桌面 composition 不打开 Web 服务器、不监听 loopback，也不存在 token URL；`apps/desktop-host` 本身不含任何 fork 改动。
+- **renderer 传输归壳。** `desktop-transport.js` 安装 `__DSH_TRANSPORT__`，其中 `ownsHost: true`，并用 invoke 命令实现 `fetch` 与 `openStream`，正好填上被服务页面用 HTTP 与 WebSocket 填的那个接缝。壳把它作为窗口初始化脚本注入，并以不带 setter 的方式定义该全局，因为 Tauri 的 URI scheme responder 无法流式响应，而 Host 为 Electron 系父进程注入的脚本会。
 - **监督路径保留为回退。** 没有随附运行时的时候，壳 spawn checkout 里构建好的 CLI（`--profile desktop --no-open --port 0`），从 stdout 读取 `dsh web: <authenticatedUrl>` 行，并把窗口导航到该 URL；`?token=` → cookie 的交换发生在这次导航内部。
 - **两条路径各用各自的 profile。** 监督路径启动随附的 `web` profile，因为 desktop profile 的组装会关掉 Web 服务器；`DSH_DESKTOP_PROFILE` 可覆盖。Host 则把 `~/.dsh/profiles/desktop` 当作插件 profile 组装。
 - **生命周期归托盘。** 关闭窗口只是隐藏，应用与其会话保持热态；托盘负责 Show、Restart dsh、Quit；`tauri-plugin-single-instance` 在第二次启动时聚焦已有窗口。两条引导路径在 Quit 时都会杀掉整棵 dsh 进程树。
@@ -32,7 +34,8 @@ src-tauri/src
 ```sh
 pnpm install
 pnpm run build
-pnpm --filter @deepseek-ai/dsh-desktop run dev
+pnpm --filter @deepseek-ai/dsh-desktop run dev        # supervised fallback, built CLI
+pnpm --filter @deepseek-ai/dsh-desktop run dev:host   # the packaged path from a linked runtime
 ```
 
 需要 Node `^22.19 || >=24`，以及带 Tauri 2 前置依赖的 Rust 工具链。

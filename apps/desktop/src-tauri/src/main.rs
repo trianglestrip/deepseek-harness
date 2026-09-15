@@ -8,6 +8,7 @@
 mod backend;
 mod host;
 mod locale;
+mod plugins;
 mod shell;
 mod supervisor;
 
@@ -23,9 +24,18 @@ fn main() {
         .manage(host::bridge::HostState::default())
         .invoke_handler(tauri::generate_handler![
             shell::restart_dsh,
+            shell::application_restart,
+            shell::open_plugin_window,
             backend::backend_status,
             backend::backend_retry,
             locale::locale_get,
+            plugins::plugins_list,
+            plugins::plugins_add,
+            plugins::plugins_remove,
+            plugins::plugins_update,
+            plugins::plugins_toggle,
+            plugins::plugins_disable_all,
+            plugins::configuration_reset,
             host::bridge::dsh_request_start,
             host::bridge::dsh_request_body,
             host::bridge::dsh_request_end,

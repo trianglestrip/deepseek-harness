@@ -14,6 +14,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { createPluginProfile } from '../src/project-manager.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -75,11 +76,9 @@ function main(): void {
   writeFileSync(join(RUNTIME, 'package.json'), `${JSON.stringify({ name: 'dsh-desktop-dev-runtime', private: true }, undefined, 2)}\n`)
   linkPackages(join(RUNTIME, 'node_modules'), packages, backend)
   mkdirSync(PROFILE, { recursive: true })
-  writeFileSync(join(PROFILE, 'package.json'), `${JSON.stringify({
-    name: 'dsh-profile-desktop',
-    private: true,
-    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } },
-  }, undefined, 2)}\n`)
+  // The profile manifest is the manager's own bootstrap shape, so the plugin
+  // transactions accept the linked development profile too.
+  createPluginProfile(PROFILE)
   linkPackages(join(PROFILE, 'node_modules'), packages, backend)
   process.stdout.write(`desktop dev runtime: linked ${String(packages.length)} packages into ${OUTPUT}\n`)
 }

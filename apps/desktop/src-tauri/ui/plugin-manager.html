@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>DeepSeek Harness — Desktop Plugins</title>
+  <link rel="stylesheet" href="plugin-manager.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1 id="title"></h1>
+      <button id="refresh" type="button"></button>
+    </header>
+    <p id="description" class="muted"></p>
+    <form id="install">
+      <label class="muted" for="spec" id="spec-label"></label>
+      <div class="row">
+        <input id="spec" name="spec" autocomplete="off" spellcheck="false" />
+        <button id="install-button" type="submit"></button>
+      </div>
+    </form>
+    <p id="status" class="muted" role="status"></p>
+    <ul id="plugins"></ul>
+  </main>
+  <script type="module" src="plugin-manager.js"></script>
+</body>
+</html>
