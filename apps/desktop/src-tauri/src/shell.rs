@@ -95,6 +95,13 @@ fn boot(app: &AppHandle) {
 /// Serve the harness web GUI from the packaged Host over the private carrier.
 fn boot_host(app: &AppHandle, launch: HostLaunch) {
     supervisor::boot_log("starting the packaged desktop Host");
+    supervisor::boot_log(&format!(
+        "launch: node={} core={} runtime={} profile={}",
+        launch.node.display(),
+        launch.entry.display(),
+        launch.runtime_dir.display(),
+        launch.project_dir.display(),
+    ));
     let environment = supervisor::host_environment();
     let failed = app.clone();
     let client = HostClient::start(

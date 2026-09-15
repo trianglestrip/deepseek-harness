@@ -9,7 +9,7 @@
  * it into the binary and installs it as a window initialization script.
  */
 
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 
@@ -35,8 +35,10 @@ function main(): void {
   // The plugin transactions run pnpm from the same bundled runtime.
   cpSync(join(BUILD_PATHS.runtime, 'pnpm'), join(RESOURCES, 'pnpm'), { recursive: true })
   cpSync(BUILD_PATHS.dsh, join(RESOURCES, 'dsh'), { recursive: true, dereference: true })
-  cpSync(SHELL_CORE, join(RESOURCES, 'shell-core.js'))
-  cpSync(SHELL_CORE.replace('shell-core.js', 'desktop-plugins.js'), join(RESOURCES, 'desktop-plugins.js'))
+  // Every built program ships, so no chunk the bundler emits stays behind.
+  for (const file of readdirSync(join(APP_ROOT, 'lib'))) {
+    if (file.endsWith('.js')) cpSync(join(APP_ROOT, 'lib', file), join(RESOURCES, file))
+  }
   process.stdout.write(`desktop resources: wrote ${RESOURCES}\n`)
 }
 

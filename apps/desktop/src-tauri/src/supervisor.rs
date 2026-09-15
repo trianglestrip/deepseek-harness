@@ -54,14 +54,32 @@ pub fn host_launch(app: &AppHandle) -> Option<HostLaunch> {
     packaged_host_launch(&resource_dir)
 }
 
+/// Strip the extended-length prefix Windows adds to application resource paths.
+///
+/// Node resolves ?-prefixed paths as a drive root rather than a module path,
+/// so the shell hands its programs the plain form.
+/// @param path - path the application resolved.
+/// @returns the same path without the verbatim prefix.
+fn host_path(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => path.to_path_buf(),
+    }
+}
+
 /// Resolve the launch an installed application carries.
 /// @param resource_dir - the application's resources directory.
 /// @returns the launch, or `None` when the runtime or the core is missing.
 fn packaged_host_launch(resource_dir: &Path) -> Option<HostLaunch> {
-    let root = resource_dir.join(RUNTIME_DIRECTORY);
+    let root = host_path(&resource_dir.join(RUNTIME_DIRECTORY));
     let node = root.join("node").join(node_executable_name());
     let dsh = root.join("dsh");
     let entry = root.join(SHELL_CORE_FILE);
+
     if !node.exists() || !entry.exists() {
         return None;
     }
@@ -547,6 +565,16 @@ mod tests {
         std::fs::create_dir_all(home.join("profiles").join("desktop")).unwrap();
         assert_eq!(resolve_profile_from(None, &home), "web".to_string());
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn strips_the_windows_verbatim_prefix() {
+        assert_eq!(host_path(Path::new(r"\\?\D:\runtime")), PathBuf::from(r"D:\runtime"));
+        assert_eq!(
+            host_path(Path::new(r"\\?\UNC\server\share\dsh")),
+            PathBuf::from(r"\\server\share\dsh"),
+        );
+        assert_eq!(host_path(Path::new("/opt/dsh")), PathBuf::from("/opt/dsh"));
     }
 
     #[test]
