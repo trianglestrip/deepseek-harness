@@ -7,6 +7,12 @@ import { describe, expect, it } from 'vitest'
 import { en, formatMessage, locales, resolveLocale } from '../src-tauri/ui/locale.js'
 
 describe('desktop shell locale', () => {
+  const message = (key: string): string => {
+    const value = en[key]
+    if (value === undefined) throw new Error(`missing English message ${key}`)
+    return value
+  }
+
   it('ships a Chinese dictionary with every English key', () => {
     expect(Object.keys(locales['zh-CN'].messages).sort()).toEqual(Object.keys(en).sort())
   })
@@ -28,7 +34,7 @@ describe('desktop shell locale', () => {
   })
 
   it('replaces named placeholders and leaves unknown ones in place', () => {
-    expect(formatMessage(en.targetVersion, { name: 'dsh-plugin-x' })).toBe('Enter the target version for dsh-plugin-x')
+    expect(formatMessage(message('targetVersion'), { name: 'dsh-plugin-x' })).toBe('Enter the target version for dsh-plugin-x')
     expect(formatMessage('{keep} {other}', { other: 'value' })).toBe('{keep} value')
   })
 })
