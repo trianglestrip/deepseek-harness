@@ -18,6 +18,7 @@ Host 保留组装逻辑与 Fetch 语义。传输变成一条 carrier 缝，其 `
 - **父进程那一半由壳拥有。** `apps/desktop/src-tauri/src/host` 在 Rust 中编解码同一批字节，用随包分发的上游 Node.js 可执行文件 spawn 已安装的 Host，等待就绪，并通过 `dsh-app://` 协议 handler 加 invoke 命令服务 webview：`dsh_request_start` 打开一条流并经 Tauri channel 投递响应帧，body、end、cancel 命令补完整次交换。
 - **线格式通过黄金向量共享。** `apps/desktop/src-tauri/tests/fixtures/host-wire-vectors.json` 保存 Host 发出的字节；`apps/desktop/scripts/generate-host-wire-vectors.ts` 重新生成它，`apps/desktop/src-tauri/src/host/frame.rs` 对每个请求向量逐字节重编码、对每个响应向量解码，包括按七字节分片；`apps/desktop/scripts/host-smoke.ts` 端到端地以 `stdio` 驱动已安装的 Host。
 - **监督者路径保留为回退。** 没有准备好资源的 checkout 仍然启动 `dsh web` 并加载其公布的 URL，所以 `tauri dev` 不需要打包步骤，载体损坏时应用仍能降级可用。
+- **开发态走同一条载体。** `DSH_DESKTOP_DEV_RUNTIME` 指向由 `apps/desktop/scripts/dev-runtime.ts` 链接出的工作区运行时树，于是 `pnpm run dev:host` 启动打包路径，Host 会在收到首个 renderer 请求时记录日志。
 
 ## Alternatives considered
 
@@ -32,6 +33,7 @@ Host 保留组装逻辑与 Fetch 语义。传输变成一条 carrier 缝，其 `
 ## Consequences
 
 - 桌面组装重新不开放 Web 服务器、不开放 loopback 端口、不产出带 token 的 URL，且壳随包分发它所构建时使用的那个 dsh。
+- 打包路径已在窗口中验证：renderer 的首个 `dsh_request_start` 抵达 Host，这也同时确认壳自身的命令不需要 capability 文件。
 - 两条载体共用一套线格式，必须同步演进；协议改动首先更新向量，Host、TypeScript 父进程与 Rust 壳都会对未知帧类型大声失败。
 - 上游改动面是两个文件 `apps/desktop-host/src/index.ts` 与 `src/wire.ts`，两处都是增量，fork 合并上游时无需解决语义分歧。
 - `serde_json` 启用了 `preserve_order`，所以 Rust 的请求帧与 TypeScript 的逐字节相同，而不只是等价 JSON。

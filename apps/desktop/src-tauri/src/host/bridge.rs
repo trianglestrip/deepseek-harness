@@ -2,6 +2,7 @@
 //! transport hooks call, and the `dsh-app://` handler that serves renderer
 //! assets and API responses from the Host over its framed streams.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
@@ -10,6 +11,11 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::host::client::HostClient;
 use crate::host::frame::{ResponseFrame, PIPE_CHUNK_BYTES};
+use crate::supervisor::boot_log;
+
+/// Logs the first renderer request once, which is how a development run proves
+/// the invoke carrier reached the Host.
+static FIRST_REQUEST: AtomicBool = AtomicBool::new(true);
 
 /// Shell-wide Host carrier; absent until the packaged runtime boots and after a
 /// failure, so every command reports unavailability instead of panicking.
@@ -68,6 +74,9 @@ pub fn dsh_request_start(
     on_frame: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     let client = client(&state)?;
+    if FIRST_REQUEST.swap(false, Ordering::Relaxed) {
+        boot_log(&format!("first renderer request: {} {}", args.method, args.url));
+    }
     let (stream_id, frames) = client.open(&args.url, &args.method, &args.headers, args.has_body)?;
     let forwarding = Arc::clone(&client);
     std::thread::spawn(move || {

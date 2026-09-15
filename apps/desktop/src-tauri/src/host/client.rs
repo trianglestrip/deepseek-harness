@@ -58,6 +58,7 @@ impl HostClient {
         entry: &std::path::Path,
         runtime_dir: &std::path::Path,
         project_dir: &std::path::Path,
+        allow_linked: bool,
         environment: Vec<(String, String)>,
         on_failure: impl Fn(String) + Send + 'static,
     ) -> Result<Self, String> {
@@ -71,6 +72,9 @@ impl HostClient {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if allow_linked {
+            command.arg("--allow-linked-profile");
+        }
         for (name, value) in environment {
             command.env(name, value);
         }

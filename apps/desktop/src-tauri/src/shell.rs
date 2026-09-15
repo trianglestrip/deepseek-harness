@@ -74,6 +74,7 @@ fn boot_host(app: &AppHandle, launch: HostLaunch) {
         &launch.entry,
         &launch.runtime_dir,
         &launch.project_dir,
+        launch.allow_linked,
         environment,
         move |message| report_failure(&failed, &message),
     );

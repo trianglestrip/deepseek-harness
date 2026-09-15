@@ -35,6 +35,9 @@ pub struct HostLaunch {
     pub project_dir: PathBuf,
     /// Renderer transport script the shell injects into the served index.
     pub transport_script: Option<PathBuf>,
+    /// Whether the Host accepts a profile whose packages are linked rather than
+    /// installed, which is the case for a development runtime tree.
+    pub allow_linked: bool,
 }
 
 /**
@@ -43,6 +46,9 @@ pub struct HostLaunch {
  * @returns the launch description, or nothing when no packaged runtime is present.
  */
 pub fn host_launch(app: &AppHandle) -> Option<HostLaunch> {
+    if let Some(launch) = dev_host_launch() {
+        return Some(launch);
+    }
     let resource_dir = app.path().resource_dir().ok()?;
     let root = resource_dir.join(RUNTIME_DIRECTORY);
     let node = root.join("node").join(node_executable_name());
@@ -63,6 +69,46 @@ pub fn host_launch(app: &AppHandle) -> Option<HostLaunch> {
         runtime_dir: dsh,
         project_dir: harness_home().join("profiles").join("desktop"),
         transport_script: transport_script.exists().then_some(transport_script),
+        allow_linked: false,
+    })
+}
+
+/// Development override for the packaged runtime.
+///
+/// `DSH_DESKTOP_DEV_RUNTIME` names a directory holding `dsh/node_modules` and
+/// `profile/`, which `apps/desktop/scripts/dev-runtime.ts` links from the
+/// workspace, so `tauri dev` exercises the same carrier the packaged
+/// application uses. The optional `DSH_DESKTOP_DEV_NODE` names the Node.js
+/// executable, defaulting to `node` on `PATH`.
+fn dev_host_launch() -> Option<HostLaunch> {
+    let root = std::env::var("DSH_DESKTOP_DEV_RUNTIME")
+        .ok()
+        .filter(|value| !value.is_empty())?;
+    let root = PathBuf::from(root);
+    let node = match std::env::var("DSH_DESKTOP_DEV_NODE") {
+        Ok(value) if !value.is_empty() => PathBuf::from(value),
+        _ => PathBuf::from(node_executable_name()),
+    };
+    let runtime_dir = root.join("dsh");
+    let entry = runtime_dir
+        .join("node_modules")
+        .join("@deepseek-ai")
+        .join("dsh-desktop-host")
+        .join("lib")
+        .join("index.js");
+    if !entry.exists() {
+        return None;
+    }
+    let transport_script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("transport")
+        .join("desktop-transport.js");
+    Some(HostLaunch {
+        node,
+        entry,
+        runtime_dir,
+        project_dir: root.join("profile"),
+        transport_script: transport_script.exists().then_some(transport_script),
+        allow_linked: true,
     })
 }
 

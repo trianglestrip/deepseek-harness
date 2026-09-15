@@ -18,6 +18,7 @@ The Host keeps the composition and the Fetch semantics. The transport becomes a 
 - **The shell owns the parent half.** `apps/desktop/src-tauri/src/host` decodes and encodes the same bytes in Rust, spawns the installed Host under the bundled upstream Node.js executable, waits for readiness, and serves the webview from the `dsh-app://` protocol handler plus invoke commands: `dsh_request_start` opens a stream and delivers response frames through a Tauri channel, and the body, end, and cancel commands complete the exchange.
 - **The wire is shared through golden vectors.** `apps/desktop/src-tauri/tests/fixtures/host-wire-vectors.json` holds the bytes the Host emits; `apps/desktop/scripts/generate-host-wire-vectors.ts` regenerates it, `apps/desktop/src-tauri/src/host/frame.rs` re-encodes every request vector byte-identically and decodes every response vector, including in seven-byte chunks, and `apps/desktop/scripts/host-smoke.ts` drives the installed Host over `stdio` end to end.
 - **The supervisor path remains the fallback.** A checkout without prepared resources still boots `dsh web` and loads the announced URL, so `tauri dev` needs no packaging step and a broken carrier degrades to a working application.
+- **Development reaches the same carrier.** `DSH_DESKTOP_DEV_RUNTIME` names a workspace-linked runtime tree that `apps/desktop/scripts/dev-runtime.ts` builds, so `pnpm run dev:host` boots the packaged path, and the Host logs the first renderer request as it arrives.
 
 ## Alternatives considered
 
@@ -32,6 +33,7 @@ The Host keeps the composition and the Fetch semantics. The transport becomes a 
 ## Consequences
 
 - The desktop composition again opens no Web server, no loopback port, and no token URL, and the shell ships the running dsh it was built against.
+- The packaged path is verified in a window: the renderer's first `dsh_request_start` reaches the Host, which also confirms that the shell's own commands need no capability file.
 - Two carriers with one wire format must stay in step; the fixture is what a protocol change updates first, and the Host, the TypeScript parent, and the Rust shell each fail loudly on an unknown frame type.
 - The upstream surface is two files, `apps/desktop-host/src/index.ts` and `src/wire.ts`; both changes are additive, so the fork can merge upstream without resolving semantics.
 - `serde_json` is built with `preserve_order`, so Rust request frames are byte-identical to the TypeScript ones rather than merely equivalent JSON.
