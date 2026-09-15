@@ -1,0 +1,95 @@
+# Desktop 功能对齐：Electron 提供了什么，当前 Tauri 壳走到哪里
+
+本文是 **fork 内部的状态文档**（`apps/desktop/PARITY.md`，不在 upstream 的文档范围内），用于回答两件事：被替换掉的 Electron 壳原本提供哪些功能、当前 Tauri 壳对齐到什么程度、还差什么。设计取舍记录在两个 Agent Note 里：[Tauri 壳](../.agents/notes/implemented/architecture/2026-09-14-desktop-shell-runs-on-tauri.md) 与 [Host 载体](../.agents/notes/implemented/architecture/2026-09-15-desktop-host-carrier.md)。
+
+状态标记：✅ 已对齐 ｜ ⚠️ 部分对齐 ｜ 🔜 待做 ｜ ⛔ 本轮明确不做。
+
+## 1. 谁来替换谁（三层模型）
+
+| 层 | Electron | 当前 Tauri | 是否"重写" |
+|---|---|---|---|
+| 壳（原 main 进程） | `src/main.ts`(521) + `preload*.ts` + `host-process.ts` + `renderer/`，15 个 IPC 通道 | `src-tauri/src/{shell,supervisor,backend}.rs` + `host/{client,frame,bridge}.rs` + `ui/` | ✅ 用 Rust 重写这一层 |
+| 后端（子进程） | `apps/desktop-host`：组装 desktop profile、资产、`/api`、帧协议 | **同一个包，未重写**：只增量加了 `stdio` 载体与注入脚本覆盖 | ⛔ 不重写 |
+| 应用逻辑（原住在 main 里） | `src/project-manager.ts`(611) + `profile-packages.ts` + `runtime-tree.ts` | 方案 D：薄 Node CLI（`apps/desktop/src/desktop-plugins.ts`，待做） | 🔜 换家，不重写 |
+
+**要点**：换壳 = 换父进程。`desktop-host` 是大 Electron main 的子进程，它自己不该被重写；而 `project-manager` 虽住在 main 里，内容却是应用逻辑，必须换个家。
+
+## 2. 不可变契约（两个壳都必须保持）
+
+判据：**能跨过"壳 ↔ 后端/渲染层"边界、或落在磁盘上的，就是契约；只被壳内部看见的，由壳自由实现。**
+
+| # | 契约 | 具体形态 | 钉住方式 |
+|---|---|---|---|
+| 1 | 桌面组合 | `apps/desktop-host/config/desktop.cordis.patch.yml`：停用 `web-startup`/`webserver`/`web-runtime`/`client-hmr`/`open-in-app`/`ui-open-in-app`/`directory-picker`；插入 `directory-picker-native` + `ui-directory-picker-native`；`connection` 注入 `credentials` | upstream 同一份文件，两个壳共用 |
+| 2 | profile 落盘布局 | `$DSH_HOME/profiles/desktop/{package.json(dsh.profile.bundles), desktop.cordis.yml, node_modules}` | prepare 脚本 + 待换家的 project-manager |
+| 3 | 线协议 | magic `0x44534833`、13 字节头、64 KiB 分块、请求/响应类型 1–4、**版本 3**；`fd` 走描述符 3/4 + Node IPC；`stdio` 增量追加事件/控制帧（类型 5/6） | 黄金向量 `src-tauri/tests/fixtures/host-wire-vectors.json` + Rust 单测 + `smoke:host` |
+| 4 | HTTP 面 | 仅三条：`/.dsh/remote-stream`、`/api/*`、其余为资产；只用 pathname | Host 代码 + `smoke:host` |
+| 5 | 渲染层 transport 契约 | `globalThis.__DSH_TRANSPORT__` = `ClientTransportHooks{ ownsHost: true, fetch?, openStream? }`（`packages/client/connection/src/client/index.ts:80/90/105`；`isLoopback` 由 `ownsHost` 决定，`:233`） | 注入脚本 + smoke 断言注入存在 |
+| 6 | 前端产物 | `apps/web` 构建的同一份 dist（`index.html` + bundles + `/plugins/` 资产） | 同一构建产物 |
+| 7 | 运行时闭包 | Node 运行时 + dsh 闭包 + `desktop-runtime` 描述符与校验 | `runtime-tree.ts` + native payload smoke |
+| 8 | CLI 契约 | 监督路径的 `dsh web: <authenticatedUrl>` readiness 行；`--profile desktop` 归桌面应用独占（`apps/cli/src/args.ts:68` `rejectElectronProfile`） | Rust `parse_launch_line` 单测 + `packages/bundle/web-app/tests` |
+
+## 3. Electron 功能清单 → 当前状态
+
+| # | Electron 能力 | 原实现 | Tauri 归属 | 状态 |
+|---|---|---|---|---|
+| 1 | 窗口、关窗常驻、单实例 | `main.ts` `createWindow`、`single-instance.ts` | `shell.rs`（`on_window_event`、`tauri-plugin-single-instance`） | ✅ |
+| 2 | 托盘与菜单 | 原生应用菜单（`Application` → Desktop Plugins… / Check for Updates…） | `shell.rs` 托盘（Show / Restart dsh / Quit）；两项业务菜单待补 | ⚠️ |
+| 3 | 打包 Host 私有载体 | `host-process.ts` + fd3/4 + Node IPC | `host/client.rs` + `frame.rs` + `bridge.rs` + `transport/desktop-transport.js` | ✅ |
+| 4 | 渲染层 transport 注入 | `DESKTOP_TRANSPORT_SCRIPT` 内联 | Host 注入 `__DSH_TRANSPORT__`（`ownsHost` + `fetch` + `openStream`） | ✅ |
+| 5 | 监督回退路径 | 无（Electron 只有 Host 路径） | `supervisor.rs`：`dsh web` + readiness 行解析 + 崩溃监视 + 进程组 | ✅（Tauri 独有） |
+| 6 | 后端状态机 | `backend-controller.ts`(148)：`starting/ready/error{message,profileRecovery}` + 串行重试 | `backend.rs`（状态机 + `profile_recovery` 判定） | ✅ |
+| 7 | 状态与重试通道 | `backendStatus` / `backendRetry` | `backend_status` / `backend_retry` 命令 | ✅ |
+| 8 | 恢复动作 | `applicationRestart` / `configurationReset` / `disablePlugins` | 仅 `restart_dsh`（= 重试）；其余待做 | 🔜 |
+| 9 | 启动/失败页 | `renderer/startup.*` + `startup-document.ts` + `startup-error.ts` | `ui/index.html`（文案本地化、失败 fragment、Retry；Reset/Disable 按钮待补） | ⚠️ |
+| 10 | 壳 UI 本地化 | `locale.ts`（en/zh-CN 全量字典 + `{name}` 格式化 + `localeGet`） | `ui/locale.js` + `locale.d.ts` + `tests/locale.spec.ts`（约 60 键 ×2） | ✅ |
+| 11 | 插件管理窗口 | `renderer/plugin-manager.*` + 第二窗口 + 独立 preload | 待做：第二窗口 + `ui/plugin-manager.html` | 🔜 |
+| 12 | 插件操作（列表/装/卸/升级/启停/全禁） | 7 个 IPC + `project-manager.ts` | 方案 D：`desktop-plugins.ts` + Rust 调用 | 🔜 |
+| 13 | profile 准备 | `createRuntimeProjectMetadata` / `createDevelopmentProjectMetadata` / `createPluginProfile` | `src/project-manager.ts`（保留，由 prepare 脚本与方案 D 使用） | ✅ |
+| 14 | 运行时闭包准备与校验 | `prepare:runtime` / `prepare:packages` / `prepare:dsh` + `verifyDesktopRuntime` + native smoke | `scripts/prepare-tauri*.ts`（同一条流水线，输出到 `src-tauri/resources`） | ✅ |
+| 15 | 更新检查/安装 | `update-coordinator.ts`(148) + `electron-updater` + `updatesState` | — | ⛔ |
+| 16 | 签名/公证/安装器/上传 | `package-macos.ts`、`notarize-macos-disk-images.mjs`、`windows-sign.*`、`installer.nsh`、`desktop-upload-plan.ts` | `tauri.conf.json` 的 `bundle` 已启用（icons + resources）；签名/公证/安装器钩子未配 | ⛔ |
+| 17 | 调试端口 | `inspectPort` 传 Node inspector | —（dev 用 `dev:host`，未开 inspector） | 🔜 |
+| 18 | Shell 注入页面属性、紧急页 | `startup-document.ts` | `ui/index.html` 失败 fragment | ⚠️ |
+
+统计：✅ 9 项，⚠️ 4 项，🔜 5 项，⛔ 2 项（其中 15、16 是本轮决定不做）。
+
+## 4. 同功能、不同实现（架构差异）
+
+| 维度 | Electron | 当前 Tauri |
+|---|---|---|
+| 传输载体 | 描述符 3/4 + Node IPC（协议 v3） | `stdio`：stdin/stdout 承载帧，`ready`/`fatal`/`shutdown`/`controlResult` 走帧；`fd` 契约保持逐字节不变 |
+| 渲染层通路 | `protocol.handle` 的 Node 流式代理 + `fetch('/.dsh/remote-stream')` | 静态资产走 buffered custom scheme（Tauri 的 responder 必须完整缓冲），流走 invoke + Channel |
+| 监督路径 | 无 | 有：没有打包运行时时回退到 `dsh web`（loopback + token） |
+| 引擎与体积 | Node + Chromium（`--dir` 686 MiB） | 系统 WebView + Rust（debug 13 MB） |
+| 宿主页面 | `renderer/*.html` + preload 桥 | `ui/*.html` + `__TAURI_INTERNALS__.invoke` |
+| 打包 | electron-builder + 多平台脚本 | `prepare:all` → `bundle.resources` → `tauri build`（未配签名/公证） |
+
+## 5. 当前验证证据
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| Rust 单测（含跨语言线协议向量） | `cargo test`（`apps/desktop/src-tauri`） | 13 passed |
+| Host 端到端（stdin/stdout 载体） | `pnpm --filter @deepseek-ai/dsh-desktop run smoke:host` | ok：ready → 200 → 33 KB 文档含注入脚本 → shutdown 退出码 0 |
+| 窗口内 Host 路径 | `pnpm --filter @deepseek-ai/dsh-desktop run dev:host` | `host ready: dsh 0.1.5-rc.2 at 11.9s` → `first renderer request: POST http://dsh-app.localhost/api/settings/describe` |
+| 壳 UI 字典 | `pnpm vitest run apps/desktop/tests/locale.spec.ts` | 4 passed（键集一致、无空串、zh 前缀解析、占位符替换） |
+| TS 类型检查 | `tsc -b tsconfig.host.json` / `tsconfig.client.json` | 0 error |
+| 文档配对 | `pnpm run verify-translation-pairing` | 通过（README 与 Agent Note） |
+
+**已被证伪的旧假设**：`capabilities.json` 是 `{}` 并不阻塞壳自身命令——Tauri 2.11.5 只对 `plugin:*` 命令走 `resolve_access`，app 命令不经 ACL；窗口内的首个 renderer 请求已证明这条路径可用。
+
+## 6. 剩余工作（按顺序）
+
+| 阶段 | 内容 | 验收方式 |
+|---|---|---|
+| 1c | 恢复动作：`restart_application` / `reset_desktop` / `disable_all_plugins` + 失败页按钮 | Rust 单测 + 手工触发失败（指向不存在的 profile）后按钮可用 |
+| 2a | 方案 D 插件 CLI：`apps/desktop/src/desktop-plugins.ts` + tsdown 单入口 + Rust 调用（用 resources 里的 Node 与内置 pnpm） | 单测覆盖参数校验与 profile 路径；在 dev 运行时上真实装/卸一个本地 tarball 插件 |
+| 2b | 插件管理窗口：第二窗口 + `ui/plugin-manager.html` + 走 2a 的命令 | 手工冒烟：列/装/卸/启停/全禁 + 后端自动重启 |
+| 2c | 菜单两项：Desktop Plugins…（打开窗口）、恢复项 | 手工冒烟 |
+| 3 | 窗口显示时机（ready 后再 show）与导航失败页（#8） | 手工冒烟 + 失败路径日志 |
+| — | 更新、签名/公证/安装器 | ⛔ 本轮不做 |
+
+## 7. 本机环境注意（不影响仓库本身）
+
+- 本机 `npm` 安装损坏（缺 `npm-cli.js`/`npm-prefix.js`），而仓库脚本内部调用 `npm run …`；用 PATH shim（`npm` → `pnpm`，需同时提供 `npm.cmd`）才能跑 `pnpm run typecheck` 与 pre-push hook。
+- lefthook 的 `third-party notices` 钩子在本机必然失败：`node_modules` 缺 lockfile 要求的 `@anthropic-ai/claude-agent-sdk-win32-x64@0.3.263`，且 `pnpm install --frozen-lockfile --force` 报 "Already up to date" 不补装。涉及 `pnpm-lock.yaml`/`apps/*/src/**` 的提交需 `--no-verify`，或在一致的 `node_modules` 上重跑该生成器。
