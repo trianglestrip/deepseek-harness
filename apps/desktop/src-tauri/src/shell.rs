@@ -45,6 +45,9 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // injection targets a shell that can stream a protocol response.
     .initialization_script(TRANSPORT_SCRIPT)
     .initialization_script(SHELL_API_SCRIPT)
+    .on_page_load(|_, payload| {
+        supervisor::boot_log(&format!("page {:?} {}", payload.event(), payload.url()));
+    })
     .build()?;
     if let Ok(url) = window.url() {
         handle.state::<AppState>().set_initial_url(url);
@@ -230,6 +233,8 @@ pub fn open_plugin_window(app: AppHandle) -> Result<(), String> {
     )
     .title(PLUGIN_WINDOW_TITLE)
     .inner_size(PLUGIN_WINDOW_SIZE.0, PLUGIN_WINDOW_SIZE.1)
+    .visible(true)
+    .focused(true)
     .initialization_script(SHELL_API_SCRIPT)
     .build()
     .map_err(|error| format!("desktop shell: cannot open the plugin window: {error}"))?;
@@ -282,6 +287,7 @@ pub fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
 
 /// Resident mode: closing the window hides it instead of ending the session.
 pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
+    supervisor::boot_log(&format!("window event {}: {event:?}", window.label()));
     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
         api.prevent_close();
         let _ = window.hide();

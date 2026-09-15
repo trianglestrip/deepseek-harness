@@ -38,9 +38,10 @@ pnpm install
 pnpm run build
 pnpm --filter @deepseek-ai/dsh-desktop run dev        # the packaged resource tree
 pnpm --filter @deepseek-ai/dsh-desktop run dev:host   # the packaged path from a linked runtime
+pnpm --filter @deepseek-ai/dsh-desktop run app -- --host --fresh   # either mode, clean tree and webview profile
 ```
 
-`dev:host` declares no bundle resources (`src-tauri/tauri.dev.conf.json`), because the Tauri build script copies every declared resource into the target directory on each rebuild — 11,674 files for this tree. It points the shell at the linked runtime instead, so a Rust edit costs one compile. `dev` keeps the resource tree and is the run that matches a release.
+`dev:host` declares no bundle resources (`src-tauri/tauri.dev.conf.json`), because the Tauri build script copies every declared resource into the target directory on each rebuild — 11,674 files for this tree. It points the shell at the linked runtime instead, so a Rust edit costs one compile. `dev` keeps the resource tree and is the run that matches a release. `app` adds the diagnosis a stuck run needs: it stops the previous process tree, and `--fresh` points WebView2 at a new profile, because a shell killed without its children leaves processes holding the profile and the next window then never loads a page.
 
 Requires Node `^22.19 || >=24` and a Rust toolchain with the Tauri 2 prerequisites.
 

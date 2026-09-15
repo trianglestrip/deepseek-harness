@@ -38,9 +38,10 @@ pnpm install
 pnpm run build
 pnpm --filter @deepseek-ai/dsh-desktop run dev        # the packaged resource tree
 pnpm --filter @deepseek-ai/dsh-desktop run dev:host   # the packaged path from a linked runtime
+pnpm --filter @deepseek-ai/dsh-desktop run app -- --host --fresh   # either mode, clean tree and webview profile
 ```
 
-`dev:host` 不声明任何 bundle 资源（`src-tauri/tauri.dev.conf.json`）：Tauri 的 build script 会在每次重编时把声明的资源逐个复制到 target 目录——这棵树是 11,674 个文件。它改为让壳指向链接出的运行时，因此改一次 Rust 只需一次编译。`dev` 保留资源树，是发布前该信任的那次运行。
+`dev:host` 不声明任何 bundle 资源（`src-tauri/tauri.dev.conf.json`）：Tauri 的 build script 会在每次重编时把声明的资源逐个复制到 target 目录——这棵树是 11,674 个文件。它改为让壳指向链接出的运行时，因此改一次 Rust 只需一次编译。`dev` 保留资源树，是发布前该信任的那次运行。`app` 补上卡住时需要的诊断：先停掉上一条进程树，`--fresh` 让 WebView2 换用新的 profile——壳被连子进程一起强杀时会留下仍占用 profile 的进程，下一次窗口就再也不会加载页面。
 
 需要 Node `^22.19 || >=24`，以及带 Tauri 2 前置依赖的 Rust 工具链。
 
