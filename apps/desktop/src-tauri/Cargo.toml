@@ -13,6 +13,8 @@ tauri-plugin-single-instance = "2"
 url = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+tauri-plugin-updater = "2"
+tauri-plugin-dialog = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

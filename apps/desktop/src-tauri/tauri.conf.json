@@ -32,6 +32,27 @@
     ],
     "resources": {
       "resources/desktop-runtime": "desktop-runtime"
+    },
+    "createUpdaterArtifacts": true,
+    "category": "DeveloperTool",
+    "copyright": "Copyright © DeepSeek",
+    "publisher": "DeepSeek",
+    "shortDescription": "DeepSeek Harness desktop shell",
+    "longDescription": "DeepSeek Harness Desktop renders the Harness web GUI in the operating system webview and serves it from the packaged desktop Host.",
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [],
+      "pubkey": ""
     }
   }
 }

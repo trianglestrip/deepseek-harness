@@ -1,5 +1,6 @@
 //! Window, tray, and boot orchestration of the desktop shell.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -163,13 +164,23 @@ pub fn stop_backend(app: &AppHandle) {
     supervisor::stop(app);
 }
 
+/// Serializes restarts, so two recovery actions cannot interleave stopping and
+/// booting the backend the way the replaced Electron controller serialized its
+/// attempts.
+static RESTARTING: AtomicBool = AtomicBool::new(false);
+
 /// Stop the current application and start a fresh one.
 pub fn restart(app: &AppHandle) {
+    if RESTARTING.swap(true, Ordering::SeqCst) {
+        supervisor::boot_log("restart already in progress");
+        return;
+    }
     let handle = app.clone();
     std::thread::spawn(move || {
         supervisor::boot_log("restarting dsh");
         stop_backend(&handle);
         boot(&handle);
+        RESTARTING.store(false, Ordering::SeqCst);
     });
 }
 
@@ -222,11 +233,13 @@ pub fn open_plugin_window(app: AppHandle) -> Result<(), String> {
 fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItemBuilder::with_id("show", "Show").build(app)?;
     let plugins_item = MenuItemBuilder::with_id("plugins", "Desktop Plugins…").build(app)?;
+    let updates_item = MenuItemBuilder::with_id("updates", "Check for Updates…").build(app)?;
     let restart_item = MenuItemBuilder::with_id("restart", "Restart dsh").build(app)?;
     let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
     let menu = MenuBuilder::new(app)
         .item(&show_item)
         .item(&plugins_item)
+        .item(&updates_item)
         .item(&restart_item)
         .separator()
         .item(&quit_item)
@@ -253,6 +266,7 @@ pub fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 supervisor::boot_log(&error);
             }
         }
+        "updates" => crate::update::check_and_prompt(app.clone()),
         "restart" => restart(app),
         "quit" => quit(app),
         _ => {}

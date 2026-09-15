@@ -11,6 +11,7 @@ mod locale;
 mod plugins;
 mod shell;
 mod supervisor;
+mod update;
 
 
 
@@ -22,6 +23,9 @@ fn main() {
         .manage(supervisor::AppState::default())
         .manage(backend::BackendStatus::default())
         .manage(host::bridge::HostState::default())
+        .manage(update::UpdateStatus::default())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             shell::restart_dsh,
             shell::application_restart,
@@ -36,6 +40,9 @@ fn main() {
             plugins::plugins_toggle,
             plugins::plugins_disable_all,
             plugins::configuration_reset,
+            update::updates_check,
+            update::updates_install,
+            update::updates_state,
             host::bridge::dsh_request_start,
             host::bridge::dsh_request_body,
             host::bridge::dsh_request_end,

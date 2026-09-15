@@ -1,6 +1,6 @@
 /**
- * Copy the prepared desktop runtime and the shell core into the Tauri resource
- * tree the shell bundles.
+ * Copy the prepared desktop runtime, the pnpm the plugin transactions run, and
+ * the shell programs into the Tauri resource tree the shell bundles.
  *
  * Run after `prepare:runtime` and `prepare:dsh`: those materialize the upstream
  * Node.js executable and the installed dsh closure under the target build root,
@@ -32,8 +32,11 @@ function main(): void {
   rmSync(RESOURCES, { recursive: true, force: true })
   mkdirSync(RESOURCES, { recursive: true })
   cpSync(node, join(RESOURCES, 'node'), { recursive: true })
+  // The plugin transactions run pnpm from the same bundled runtime.
+  cpSync(join(BUILD_PATHS.runtime, 'pnpm'), join(RESOURCES, 'pnpm'), { recursive: true })
   cpSync(BUILD_PATHS.dsh, join(RESOURCES, 'dsh'), { recursive: true, dereference: true })
   cpSync(SHELL_CORE, join(RESOURCES, 'shell-core.js'))
+  cpSync(SHELL_CORE.replace('shell-core.js', 'desktop-plugins.js'), join(RESOURCES, 'desktop-plugins.js'))
   process.stdout.write(`desktop resources: wrote ${RESOURCES}\n`)
 }
 

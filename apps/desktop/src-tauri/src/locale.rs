@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use serde::Serialize;
 
@@ -105,6 +106,16 @@ fn locale_of(id: LocaleId, table: &'static [(&'static str, &'static str)]) -> De
     DesktopLocale { id, messages: table.iter().copied().collect() }
 }
 
+/// Copy for the locale the shell's pages last requested.
+///
+/// Menu and dialog actions run without a page, so they read the copy the pages
+/// resolved; a shell that never served a page answers in English.
+/// @returns the most recently requested locale.
+pub fn current() -> DesktopLocale {
+    let id = *CURRENT_LOCALE.lock().unwrap();
+    if id == "zh-CN" { locale_of("zh-CN", ZH_CN) } else { locale_of("en", EN) }
+}
+
 /// Resolve one shipped locale from the WebView's ordered language tags.
 ///
 /// The first tag whose primary subtag matches a shipped locale wins, so an exact
@@ -124,6 +135,10 @@ pub fn resolve(languages: &[String]) -> DesktopLocale {
     locale_of("en", EN)
 }
 
+/// Locale the last page requested, which the tray and dialogs read because no
+/// page is reachable from a menu action.
+static CURRENT_LOCALE: Mutex<LocaleId> = Mutex::new("en");
+
 /// Logs the first page that asked for copy, which is how a development run
 /// proves the shell API reached its pages.
 static FIRST_LOCALE_REQUEST: AtomicBool = AtomicBool::new(true);
@@ -134,6 +149,7 @@ static FIRST_LOCALE_REQUEST: AtomicBool = AtomicBool::new(true);
 #[tauri::command]
 pub fn locale_get(languages: Vec<String>) -> DesktopLocale {
     let locale = resolve(&languages);
+    *CURRENT_LOCALE.lock().unwrap() = locale.id;
     if FIRST_LOCALE_REQUEST.swap(false, Ordering::Relaxed) {
         crate::supervisor::boot_log(&format!("first page requested locale: {}", locale.id));
     }

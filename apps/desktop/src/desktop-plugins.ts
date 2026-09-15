@@ -17,14 +17,14 @@ import { join } from 'node:path'
 import { DesktopProjectManager, type DesktopProjectMutation } from './project-manager.ts'
 import { resolveDesktopPaths } from './paths.ts'
 
-interface Options {
+export interface Options {
   readonly node: string
   readonly pnpm: string
   readonly dsh: string
   readonly profile: string | undefined
 }
 
-const COMMANDS = ['list', 'add', 'remove', 'update', 'toggle', 'disable-all', 'reset'] as const
+export const COMMANDS = ['list', 'add', 'remove', 'update', 'toggle', 'disable-all', 'reset'] as const
 type Command = (typeof COMMANDS)[number]
 
 function messageOf(reason: unknown): string {
@@ -37,7 +37,7 @@ function required(value: string | undefined, usage: string): string {
 }
 
 /** Parse the shell's arguments. */
-function parse(argv: readonly string[]): { options: Options; command: Command; args: string[] } {
+export function parse(argv: readonly string[]): { options: Options; command: Command; args: string[] } {
   const options: Record<string, string> = {}
   let index = 0
   for (; index < argv.length; index += 1) {
@@ -66,7 +66,7 @@ function parse(argv: readonly string[]): { options: Options; command: Command; a
 }
 
 /** One supported transaction and the arguments it takes. */
-function mutation(command: Command, args: string[]): DesktopProjectMutation | undefined {
+export function mutation(command: Command, args: string[]): DesktopProjectMutation | undefined {
   switch (command) {
     case 'add':
       return { type: 'plugin-add', spec: required(args[0], 'add <spec>') }
@@ -118,7 +118,9 @@ async function main(): Promise<void> {
   process.stdout.write(`${JSON.stringify({ ok: true, value: null })}\n`)
 }
 
-await main().catch((error: unknown) => {
-  process.stdout.write(`${JSON.stringify({ ok: false, message: messageOf(error) })}\n`)
-  process.exitCode = 1
-})
+if (import.meta.main) {
+  await main().catch((error: unknown) => {
+    process.stdout.write(`${JSON.stringify({ ok: false, message: messageOf(error) })}\n`)
+    process.exitCode = 1
+  })
+}

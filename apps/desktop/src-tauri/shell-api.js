@@ -65,6 +65,14 @@
         /** @returns {Promise<void>} completion after every third-party plugin is disabled. */
         disableAll: () => invoke('plugins_disable_all'),
       },
+      updates: {
+        /** @returns {Promise<{phase: string, version?: string, message?: string}>} the check result. */
+        check: () => invoke('updates_check'),
+        /** @returns {Promise<{phase: string, version?: string, message?: string}>} the install result. */
+        install: () => invoke('updates_install'),
+        /** @returns {Promise<{phase: string, version?: string, message?: string}>} the last reported state. */
+        state: () => invoke('updates_state'),
+      },
       /** @returns {Promise<unknown>} completion after the desktop profile is rebuilt. */
       resetConfiguration: () => invoke('configuration_reset'),
       /** @returns {Promise<never>} never resolves; the application relaunches. */
