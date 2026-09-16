@@ -3,10 +3,10 @@
 > 目的：把「用户发一条消息」到「模型看到请求」之间，**代码实际执行的顺序**画清楚 —— 提示词注入在哪一步发生、有哪些决策点、谁在什么钩子上贡献内容。
 >
 > 依据（全部核对过本地代码，不是推测）：
-> - 本地 checkout：`D:\gitProject\testCAD\portable\deepseek-harness-main`，版本 `0.1.6-alpha.1`，HEAD = upstream master (`0d1f5000`, 2026-09-15) + 2 个 fork 提交
-> - 官方文档：`official/architecture.md#turn-flow`、`official/agent-lifecycle.md`、`official/system-prompt.md`
-> - 抓取包：`D:\gitProject\testCAD\portable\dsh-online-docs\`（本站点快照 = `dsh-v0.1.5-rc.2`，比本代码旧约 5 天）
-> - 每个流程图末尾给出源码位置，可逐条复核
+> - 本仓库：版本 `0.1.6-alpha.1`，HEAD = upstream master (`0d1f5000`, 2026-09-15) + 2 个 fork 提交
+> - 官方文档站 <https://deepseek-harness.github.io/deepseek-harness/> 的 `reference/index.md`（`#turn-flow`）、`reference/agent-lifecycle.md`、`reference/subsystems/system-prompt.md`
+> - 该文档站是 `dsh-v0.1.5-rc.2`（2026-09-10）的发布快照，比本代码旧约 5 天；两者差异见第 11 节
+> - 每个流程图末尾给出源码位置（`packages/...`），可逐条复核
 
 ---
 
@@ -194,7 +194,7 @@ flowchart TD
 
 动态运行时上下文单独一套 order：`SANDBOX_POLICY=110`、`APPROVAL_POLICY=115`、`SUBAGENT_DELEGATION=120`。
 
-> 注意：抓取包里第三方文章（学习站第 7 章）写的 `-100 身份 / -99 源码 / -98 Web / 100-199 工具带 / 190 文件引用` 与当前代码**不一致**，那是旧版本的分配；以本节代码值为准。
+> 注意：第三方分析文章（<https://lucky2024-pllove.github.io/deepseek-harness-learning/guide/analysis> 第 7 章）写的 `-100 身份 / -99 源码 / -98 Web / 100-199 工具带 / 190 文件引用` 与当前代码**不一致**，那是旧版本的分配；以本节代码值为准。
 
 来源：`packages/core/system-prompt/src/index.ts:122-172`。
 
@@ -284,7 +284,7 @@ flowchart TD
 - **新请求序列**：`startsRequestSeries` 为真、surface 被替换过、或本次 `tools` 与已记录的 `request/header` 不同 → 开新序列。
 - **重试**：`agent/request-error` 返回 `{kind:'retry'}` 时，在仍打开的 step 内重新 `prepareCall` 并对账同一份已渲染组装结果，**不重复组装、不重复 `agent/pre-step`、不重复追加用户消息**。
 
-来源：`agent.ts` `step()` 352-620、`packages/core/session`（`deriveMessages`）、`official/architecture.md#turn-flow`。
+来源：`agent.ts` `step()` 352-620、`packages/core/session`（`deriveMessages`）、官方文档站 `reference/index.md#turn-flow`。
 
 ---
 
@@ -365,7 +365,7 @@ flowchart TD
 
 ## 11. 与在线资料的差异提示
 
-1. **本站点快照落后代码**：官方文档站是 `dsh-v0.1.5-rc.2`（2026-09-10）的发布快照，本代码是 master+2（2026-09-15）。归一化对比后真实内容差异行数：`config-catalog` 437、`session` 99、`capability-seams` 88、`core` 67、`compaction` 37、`tools` 31、`llm-streaming` 18、`architecture` 9、`subagent` 6、`system-prompt` 4；`agent-lifecycle` / `scope` / `cordis-primer` / `tool-execution-pipeline` 为 0。详见 `compare-normalized/`。
+1. **文档站快照落后代码**：官方文档站是 `dsh-v0.1.5-rc.2`（2026-09-10）的发布快照，本代码是 master+2（2026-09-15）。把站点页面（URL 去掉末尾 `/` 加 `.md` 即原始 Markdown）与本仓库同名文件做"去掉链接目标与语言切换行"的归一化对比后，真实内容差异行数：`config-catalog` 437、`session` 99、`capability-seams` 88、`core` 67、`compaction` 37、`tools` 31、`llm-streaming` 18、`architecture` 9、`subagent` 6、`system-prompt` 4；`agent-lifecycle` / `scope` / `cordis-primer` / `tool-execution-pipeline` 为 0。
 2. **`PromptSection.interpolate` 是新增能力**：本地代码已有（`interpolate?: boolean`，`renderPrompt` 据此跳过插值），站点快照版本的文档里还没有这一项。
-3. **段落 order 值**：第三方文章给的 `-100 / -99 / -98 / 190` 等属于旧版或臆测，与本代码不符，见第 4 节。
-4. 第三方页面的流程图多为客户端渲染，抓取包里只剩标题；本文件所有图均以内联 mermaid 源码保存，可直接渲染或修改。
+3. **段落 order 值**：第三方分析文章 <https://lucky2024-pllove.github.io/deepseek-harness-learning/guide/analysis> 给的 `-100 / -99 / -98 / 190` 等属于旧版或臆测，与本代码不符，见第 4 节。
+4. 第三方站点页面的流程图多为客户端渲染，静态抓取只剩标题；本文件所有图均以内联 mermaid 源码保存，可直接渲染或修改。
