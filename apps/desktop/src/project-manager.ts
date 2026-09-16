@@ -473,6 +473,9 @@ export class DesktopProjectManager {
           XDG_STATE_HOME: this.paths.pnpm.state,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
+        // Package transactions run on the bundled console-subsystem runtime;
+        // they must not open a console window beside the desktop shell.
+        windowsHide: true,
       })
       let failure: Error | undefined
       let diagnostics = ''

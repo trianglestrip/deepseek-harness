@@ -121,6 +121,9 @@ export class DesktopHostProcess {
         ELECTRON_RUN_AS_NODE: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe', 'pipe', 'pipe', 'ipc'],
+      // A console-subsystem runtime (the development `node.exe`) would open a
+      // console window of its own when the Electron host has none to inherit.
+      windowsHide: true,
     })
     const requestPipe = child.stdio[DESKTOP_REQUEST_PIPE_FD]
     const responsePipe = child.stdio[DESKTOP_RESPONSE_PIPE_FD]

@@ -140,6 +140,10 @@ export function launchWindowsJob(
       cwd: process.cwd(),
       env: runnerEnvironment(WINDOWS_RUNNER_SELECTION, invocation),
       stdio: runnerStdio(spec, true, ignoredStdinFd ?? 'pipe'),
+      // A console-subsystem runner (a plain `node` execPath) would otherwise
+      // create a visible console window when the host has none, and hand that
+      // window to every target it starts inside it.
+      windowsHide: true,
     }) as RunnerProcess
   } finally {
     if (ignoredStdinFd !== undefined) closeSync(ignoredStdinFd)

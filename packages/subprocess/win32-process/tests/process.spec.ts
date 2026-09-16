@@ -6,7 +6,7 @@ import {
   spawnInheritedJobProcess,
   spawnPipedProcess,
 } from '../src/index.ts'
-import { CREATE_SUSPENDED } from '../src/abi.ts'
+import { CREATE_NO_WINDOW, CREATE_SUSPENDED } from '../src/abi.ts'
 import { processInformationType } from '../src/ffi.ts'
 import type { NativePtr, Win32ProcessBindings } from '../src/index.ts'
 
@@ -106,7 +106,7 @@ describe('spawnInheritedJobProcess', () => {
       null,
       null,
       1,
-      CREATE_SUSPENDED,
+      CREATE_SUSPENDED | CREATE_NO_WINDOW,
       null,
       'C:\\work',
       expect.anything(),

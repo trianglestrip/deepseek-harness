@@ -23,9 +23,10 @@
  * Known boundaries (inherent to restricted tokens, not this port):
  *  - writes are restricted; reads, network, and process visibility are NOT
  *    (WRITE_RESTRICTED intersects only write accesses);
- *  - console isolation is unavailable — children share the host console
- *    (CREATE_NO_WINDOW / CREATE_NEW_CONSOLE children die with
- *    STATUS_DLL_INIT_FAILED under the restriction);
+ *  - console windows are suppressed — every child is created with
+ *    `CREATE_NO_WINDOW`, so a host with no console of its own (the packaged
+ *    desktop application, whose runtime is a GUI image) gets no console
+ *    window when the harness runs a command;
  *  - the private temp directory and every writable directory must be owned by the
  *    caller (owner-implicit WRITE_DAC);
  *  - grants are standing ACE mutations on real directories. WORKSPACE grants
