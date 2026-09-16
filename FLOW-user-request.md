@@ -86,7 +86,7 @@ sequenceDiagram
   D->>S: append turn/end
 ```
 
-来源：`packages/core/agent-loop/src/agent.ts`（`preStep` 236-258、`turn` 262-350、`step` 352+）、`packages/core/system-prompt/src/index.ts`。
+来源：`packages/core/agent-loop/src/agent.ts`（`preStep` 236-258、`turn` 262-350、`step` 352+）、`packages/core/system-prompt/src/index.ts`。`PromptAssembly` 四个字段各自是什么、分别去向哪里，见第 3 节。
 
 ---
 
@@ -160,7 +160,59 @@ flowchart TD
 - `complete: true` 的段落让提示词"只剩它"——但为了解析工具与变量，协作瀑布仍然会跑完。
 - `suppressRuntimeContext()` 只清空动态 context 贡献，**不改变**拥有这些事实的服务。
 
-来源：`packages/core/system-prompt/src/index.ts:559-640`（assemble）、`:280-320`（render）、`:122-175`（order 表）。
+### 组装产物的四个字段
+
+`assemble()` 返回的 `PromptAssembly` 由四类素材组成（`packages/core/system-prompt/src/index.ts:108`）。它们的去向不同：只有 `sections` 与 `contexts` 会变成消息，`tools` 变成请求字段，`variables` 根本不作为内容进入模型输入。
+
+```mermaid
+flowchart LR
+  A["ctx.systemPrompt.assemble()"] --> S["sections"]
+  A --> C["contexts"]
+  A --> T["tools"]
+  A --> V["variables"]
+  S -->|renderPrompt 插值 + 空行拼接| SM["system/message<br/>surface 节点 0 或替换"]
+  C -->|renderContextSections + joinContextSections| RC["RuntimeContextProjection"]
+  RC -->|快照未变则不发消息| UM["user/message（Current runtime context…）"]
+  T -->|buildRequest| RH["request/header.tools + 请求体 tools"]
+  V -->|interpolate| S
+  V -->|interpolate| C
+```
+
+| 字段 | 类型 | 是什么 | 注册 API | 合并语义 | 最终去向 |
+|---|---|---|---|---|---|
+| `sections` | `AssembledSection[]` | 系统提示词段落（文本已求值、未插值） | `systemPrompt.section()` | **同名 scoped 覆盖 global**，按 `order` 升序 | `renderPrompt()` → `system/message` |
+| `contexts` | `AssembledContext[]` | 动态运行时状态的快照文本 | `systemPrompt.context()` | 同名 scoped 覆盖 global；可被 `suppressRuntimeContext()` 整体清空 | `RuntimeContextProjection.project()` → user 消息（变了才发） |
+| `tools` | `ToolSchema[]` | 模型可见的工具 JSON Schema | `systemPrompt.tools()` | **累加**：global 与作用域 provider 都贡献 | `buildRequest()` → 请求体 `tools` + `request/header` |
+| `variables` | `Record<string, string \| undefined>` | `{{name}}` 的取值表 | `systemPrompt.variable()` | scoped 覆盖 global（就近优先） | 仅文本插值，本身不是模型可见内容 |
+
+**`sections` — 系统提示词段落**
+- `text` 可以是字符串或 `(AssembleContext) => string`（每次组装求值）；排序用 `getSectionOrder('PLAN_POLICY')` 这类具名分配，而不是硬编码数字。
+- `interpolate: false` 保留字面文本（生成式工具文档里含 `{{…}}` 时必须用）；`complete: true` 的段落会在瀑布后被恢复成唯一段落。
+- 去向：`renderPrompt()` → `SystemPromptProjection.project()` → `system/message`。首个步骤占 surface 节点 0，文本变化时替换，或在声明 `systemPromptUpdate: 'in-history'` 的路由上追加到缓存历史之后。
+- 真实例子：`HARNESS_IDENTITY`、persona 前后缀、`PLAN_POLICY`（`packages/plan/plan-mode`）、`FILE_REFERENCE`（`packages/context/file-reference-local:69`）、`core/tools` 的 `collapseSection()` / `sdkSection()`（`:836-837`）以及各 `tool-*` 包的用法指导段。
+
+**`contexts` — 动态运行时上下文**
+- 语义是**快照**而不是提示词段落：拼接时会加 `Current runtime context. This snapshot supersedes earlier runtime-context snapshots.` 前缀；内容没变就不产生新消息，关闭时写 `Current runtime context: none. ...` 清除语句（`packages/core/agent-loop/src/runtime-context.ts:147`）。
+- 这就是它与 `sections` 分开的理由：沙箱模式、审批策略、子代理委派会变，需要能替换、能清除，且不该每轮重发。
+- 内置贡献方：`SANDBOX_POLICY`(110)、`APPROVAL_POLICY`(115)、`SUBAGENT_DELEGATION`(120)。
+
+**`tools` — 模型可见的工具 schema**
+- provider 返回 `{ schemas, knownNames? }`；`knownNames` 是限制前的名称全集，用来区分"配置里名字写错"与"该工具在此作用域被有意隐藏"。
+- schema 会被 `structuredClone` 复制，防止 provider 后续改动泄漏进请求；顺序由配置 `toolOrder` 决定（`TOOL_ORDER_REST = '<unlisted-tools>'` 标记未列出项插入点），**不是注册顺序** —— 注册顺序只是插件加载的产物。
+- 去向：`buildRequest()` 写入请求体与 `request/header` 事件；`toolsChanged()` 用它与已记录 header 比较，**变化即开新的请求序列**（缓存边界）。
+- 贡献者：`packages/core/tools/src/index.ts:834` 的 `wireSchemas(context.scope)`。
+
+**`variables` — 提示词变量**
+- 只在 `renderPrompt()` / `renderContextSections()` 调用的 `interpolate()` 里生效，把 `{{name}}` 替换成值；变量表本身不构成独立内容。
+- **严格失败**，不做静默空串：未注册的名字 → 抛错并列出已注册名；注册了但本次返回 `undefined` → 抛错；`{{}}` 之类畸形引用 → 抛错（`index.ts:339-361`）。
+- 真实用例：agent-loop 注册 `provider` / `model` / `cwd`（`packages/core/agent-loop/src/index.ts:420-422`），web profile 的 persona 文本就用它们 —— `personaPrefix: You are a coding agent powered by the {{model}} model.`、`personaSuffix: Your working directory is {{cwd}}.`（`packages/bundle/web-app/cordis.patch.yml:18-20`）。
+
+三个容易混的地方：
+1. `tools` 是**累加**，`sections` / `contexts` / `variables` 是**名字寻址**：后者同名时近作用域覆盖远作用域，前者的多个 provider 全部生效。
+2. `complete` 段落只影响最终的 sections，不影响瀑布已经解析出的 tools / contexts / variables。
+3. 变量替换发生在文本层面：值一旦替换进段落，就随该段落（system 消息或上下文快照）一起进入模型输入。
+
+来源：`packages/core/system-prompt/src/index.ts:559-640`（assemble）、`:280-320`（render）、`:342-361`（interpolate）、`:52-108`（PromptSection / PromptContext / AssembledSection / PromptAssembly）、`:122-175`（order 表）。
 
 ---
 
@@ -251,6 +303,8 @@ flowchart LR
 1. 快照文本以 `Current runtime context. This snapshot supersedes earlier runtime-context snapshots.` 开头，**内容不变就不产生新消息**（避免每轮重复注入）。
 2. 关闭时写入 `Current runtime context: none. ...` 清除语句，而不是简单省略。
 
+表中前两行的区别（为什么动态状态走 `contexts` 而不是并进 `sections`）以及 `tools` / `variables` 的性质，见第 3 节「组装产物的四个字段」。
+
 ---
 
 ## 6. 请求构造：提示词如何进入模型历史
@@ -284,7 +338,7 @@ flowchart TD
 - **新请求序列**：`startsRequestSeries` 为真、surface 被替换过、或本次 `tools` 与已记录的 `request/header` 不同 → 开新序列。
 - **重试**：`agent/request-error` 返回 `{kind:'retry'}` 时，在仍打开的 step 内重新 `prepareCall` 并对账同一份已渲染组装结果，**不重复组装、不重复 `agent/pre-step`、不重复追加用户消息**。
 
-来源：`agent.ts` `step()` 352-620、`packages/core/session`（`deriveMessages`）、官方文档站 `reference/index.md#turn-flow`。
+来源：`agent.ts` `step()` 352-620、`packages/core/session`（`deriveMessages`）、官方文档站 `reference/index.md#turn-flow`。请求体里的 `tools` 来自 `PromptAssembly.tools`（见第 3 节）。
 
 ---
 
