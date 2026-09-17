@@ -113,6 +113,7 @@ export class AgentPresets extends TypertRemoteService {
     })).default([]),
     includeShippedRoot: z.boolean().default(true),
     includeUserRoot: z.boolean().default(true),
+    modeSelectionEnabled: z.boolean().default(true),
   }) as z<Config>
 
   /**
@@ -192,7 +193,7 @@ export class AgentPresets extends TypertRemoteService {
       this.settings = settingsCtx.settings.register(
         SETTINGS_NAMESPACE,
         AgentPresetSettingsSchema,
-        { base: { default: config.default, modeSelectionEnabled: true } },
+        { base: { default: config.default, modeSelectionEnabled: config.modeSelectionEnabled ?? true } },
       )
       this.settingsService = settingsCtx.settings
       settingsCtx.effect(() => () => {

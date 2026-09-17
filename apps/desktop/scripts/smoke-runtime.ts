@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DesktopHostProcess } from '../src/host-process.ts'
-import { createPluginProfile } from '../src/project-manager.ts'
+import { createPluginProfile, inBoxBundlesFor } from '../src/project-manager.ts'
 import { linkDesktopHostPackages, validateDesktopPluginGraph } from '../src/profile-packages.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
@@ -19,7 +19,7 @@ export async function smokeDesktopRuntime(root: string, node: string, runtime: D
   const profile = join(home, 'profiles', 'desktop')
   const host = new DesktopHostProcess(node, root, profile, undefined, { ...process.env, DSH_HOME: home })
   try {
-    createPluginProfile(profile)
+    createPluginProfile(profile, inBoxBundlesFor(runtime.productBundles ?? []))
     const pluginName = 'desktop-runtime-smoke-plugin'
     const plugin = join(profile, 'node_modules', pluginName)
     mkdirSync(plugin, { recursive: true })

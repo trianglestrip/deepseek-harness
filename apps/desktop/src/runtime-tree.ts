@@ -1,7 +1,7 @@
 /** Relocatable, integrity-recorded production packages carried by one Desktop release. */
 
 import { createHash } from 'node:crypto'
-import { lstatSync, readdirSync, readFile, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFile, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { valid } from 'semver'
@@ -33,6 +33,12 @@ export interface DesktopRuntimeDescriptor {
   readonly platform: NodeJS.Platform
   readonly arch: string
   readonly sharedPackages: readonly DesktopSharedPackage[]
+  /**
+   * Bundles this runtime ships as in-box parts of the product, mounted for every
+   * desktop profile ahead of any installed plugin. Empty for an upstream build;
+   * a product build lists what it staged beside the runtime's own packages.
+   */
+  readonly productBundles: readonly string[]
   readonly files: readonly DesktopRuntimeFile[]
 }
 
@@ -119,11 +125,13 @@ async function inventoryRuntimeForVerification(root: string): Promise<DesktopRun
  * @param release - Matching shell, dsh, Host, and executable versions.
  * @param sharedNames - Release-owned packages supplied to plugins.
  * @param target - Platform and architecture selected by runtime preparation.
+ * @param productBundles - Bundles staged beside the runtime, mounted for every profile.
  * @returns Descriptor written beside the production packages.
  */
 export function writeDesktopRuntime(
   root: string, release: DesktopRelease, sharedNames: readonly string[],
   target: { platform: NodeJS.Platform; arch: string } = process,
+  productBundles: readonly string[] = [],
 ): DesktopRuntimeDescriptor {
   const sharedPackages = [...new Set(sharedNames)].sort().map((name) => {
     if (!PACKAGE_NAME.test(name)) throw new Error(`desktop runtime: invalid shared package ${name}`)
@@ -134,9 +142,20 @@ export function writeDesktopRuntime(
     }
     return { name, version: manifest.version, path }
   })
+  // A product bundle must actually be in the tree: the shell mounts it by name
+  // from here, so a missing directory would fail every session after packaging.
+  for (const name of productBundles) {
+    if (!PACKAGE_NAME.test(name)) throw new Error(`desktop runtime: invalid product bundle ${name}`)
+    if (sharedPackages.some(entry => entry.name === name)) {
+      throw new Error(`desktop runtime: product bundle ${name} is also a shared package`)
+    }
+    if (!existsSync(join(runtimePath(root, `node_modules/${name}`), 'package.json'))) {
+      throw new Error(`desktop runtime: product bundle ${name} is not installed in the runtime`)
+    }
+  }
   const descriptor: DesktopRuntimeDescriptor = {
     schemaVersion: 1, release, platform: target.platform, arch: target.arch,
-    sharedPackages, files: inventoryDesktopRuntime(root),
+    sharedPackages, productBundles: [...new Set(productBundles)].sort(), files: inventoryDesktopRuntime(root),
   }
   writeFileSync(join(root, DESKTOP_RUNTIME_FILE), `${JSON.stringify(descriptor, undefined, 2)}\n`)
   return descriptor
@@ -168,14 +187,22 @@ export function readDesktopRuntime(root: string): DesktopRuntimeDescriptor {
   if (new Set(sharedPackages.map(entry => entry.name)).size !== sharedPackages.length) {
     throw new Error('desktop runtime: duplicate shared package')
   }
-  const files = value.files as DesktopRuntimeFile[]
+  const files = value.files as readonly DesktopRuntimeFile[]
+  // Absent for an upstream descriptor; a product build records what it staged.
+  const productBundles = value.productBundles === undefined ? [] : value.productBundles
+  if (!Array.isArray(productBundles) || productBundles.some(entry => typeof entry !== 'string' || !PACKAGE_NAME.test(entry))) {
+    throw new Error('desktop runtime: invalid product bundle list')
+  }
+  if (new Set(productBundles).size !== productBundles.length) {
+    throw new Error('desktop runtime: duplicate product bundle')
+  }
   for (const name of ['@deepseek-ai/dsh', DESKTOP_HOST_PACKAGE]) {
     if (sharedPackages.find(entry => entry.name === name)?.version !== release.version) {
       throw new Error(`desktop runtime: missing or mismatched ${name}`)
     }
   }
   return { schemaVersion: value.schemaVersion as 1, release, platform: value.platform as NodeJS.Platform,
-    arch: value.arch, sharedPackages, files }
+    arch: value.arch, sharedPackages, productBundles: productBundles as readonly string[], files }
 }
 
 /**

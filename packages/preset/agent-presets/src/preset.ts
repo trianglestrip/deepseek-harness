@@ -67,4 +67,13 @@ export interface Config {
    * configured root. False mounts a roster without the derived writable root.
    */
   includeUserRoot: boolean
+  /**
+   * Base value for the settings namespace's `modeSelectionEnabled`. False starts
+   * every profile with mode selection off, so unnamed sessions resolve through
+   * `default` and no picker is offered; a person can still turn it back on in
+   * settings. A deployment that ships exactly one preset — a product whose agent
+   * is not a choice — declares `false` here rather than editing the client.
+   * Omitted means `true`, the shipped behavior.
+   */
+  modeSelectionEnabled?: boolean
 }
