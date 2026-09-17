@@ -19,8 +19,31 @@ export const CLIENT_BUILD_PROFILE_SELECTOR = 'DSH_BUILD_CLIENT_PROFILE'
 /** Public client environment required by official DSH artifacts. */
 const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'official',
-  DSH_CLIENT_TITLE: 'DeepSeek Harness',
 } as const
+
+/** Public variable carrying the product title embedded in client artifacts. */
+const CLIENT_TITLE_VARIABLE = 'DSH_CLIENT_TITLE'
+
+/** Title an official build embeds unless the deployment names its own product. */
+export const DEFAULT_CLIENT_TITLE = 'DeepSeek Harness'
+
+/**
+ * Resolve the product title one official build embeds.
+ *
+ * The title reaches the HTML document and the interface, so a deployment that
+ * ships its own product states it here instead of patching built artifacts. The
+ * default keeps the upstream identity for a build that says nothing.
+ * @param environment - build environment that may carry the title.
+ * @returns the title to embed.
+ */
+export function officialClientTitle(environment: NodeJS.ProcessEnv): string {
+  const value = environment[CLIENT_TITLE_VARIABLE]?.trim()
+  if (value === undefined || value === '') return DEFAULT_CLIENT_TITLE
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} .,&'’\-]{0,48}$/u.test(value)) {
+    throw new Error(`${CLIENT_TITLE_VARIABLE} must be a short plain-text product title; got ${JSON.stringify(value)}`)
+  }
+  return value
+}
 
 /** Public variable carrying the source commit embedded in client artifacts. */
 const CLIENT_COMMIT_HASH_VARIABLE = 'DSH_CLIENT_COMMIT_HASH'
@@ -143,6 +166,7 @@ export function officialClientBuildEnvironment(
   return {
     DSH_CLIENT_COMMIT_HASH: repositoryCommitHash(root, environment),
     DSH_CLIENT_VERSION: repositoryVersion(root),
+    DSH_CLIENT_TITLE: officialClientTitle(environment),
     ...OFFICIAL_CLIENT_BUILD_ENVIRONMENT,
   }
 }
@@ -199,6 +223,7 @@ export function resolveClientBuildEnvironment(
     return {
       DSH_CLIENT_COMMIT_HASH: commitHash,
       DSH_CLIENT_VERSION: version,
+      DSH_CLIENT_TITLE: officialClientTitle(environment),
       ...OFFICIAL_CLIENT_BUILD_ENVIRONMENT,
     }
   }

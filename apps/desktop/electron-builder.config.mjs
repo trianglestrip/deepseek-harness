@@ -52,10 +52,16 @@ export function createElectronBuilderConfig(
   }
   const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
   const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
+  // Product identity of the shell a deployment ships. Absent values keep the
+  // upstream name, so an unfurnished build stays byte-comparable in behaviour.
+  const productName = env.DSH_DESKTOP_PRODUCT_NAME?.trim() || 'DeepSeek Harness'
+  const artifactBase = env.DSH_DESKTOP_ARTIFACT_BASENAME?.trim() || 'deepseek-harness'
+  const iconsDir = env.DSH_DESKTOP_ICONS_DIR?.trim()
+  const icon = (name) => (iconsDir === undefined || iconsDir === '' ? {} : { icon: join(iconsDir, name) })
   return {
     appId,
-    productName: 'DeepSeek Harness',
-    artifactName: 'deepseek-harness-${version}-${os}-${arch}.${ext}',
+    productName,
+    artifactName: `${artifactBase}-\${version}-\${os}-\${arch}.\${ext}`,
     directories: { output: unsigned ? join(buildPaths.root, 'unsigned-artifacts') : buildPaths.artifacts },
     asar: true,
     files: [
@@ -77,6 +83,7 @@ export function createElectronBuilderConfig(
       { from: buildPaths.runtime, to: 'runtime' },
     ],
     mac: {
+      ...icon('icon.icns'),
       category: 'public.app-category.developer-tools',
       identity: macOSSigning?.signingIdentity,
       forceCodeSigning: true,
@@ -103,6 +110,7 @@ export function createElectronBuilderConfig(
       )
     },
     win: {
+      ...icon('icon.ico'),
       forceCodeSigning: !unsigned,
       signtoolOptions: {
         sign: windowsSigner,
@@ -111,6 +119,7 @@ export function createElectronBuilderConfig(
       target: ['nsis'],
     },
     linux: {
+      ...icon('icon.png'),
       category: 'Development',
       target: ['AppImage'],
     },

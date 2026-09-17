@@ -112,7 +112,9 @@ describe('client build environment', () => {
     expect(resolveClientBuildEnvironment(parent)).toEqual({
       DSH_CLIENT_BUILD_PROFILE: 'official',
       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
-      DSH_CLIENT_TITLE: 'DeepSeek Harness',
+      // The title is the one public value a deployment supplies rather than
+      // inherits, so an explicit official profile keeps it.
+      DSH_CLIENT_TITLE: 'Local title',
       DSH_CLIENT_VERSION: '1.2.3',
     })
     expect(() => {

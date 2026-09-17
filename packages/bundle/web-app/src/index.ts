@@ -53,6 +53,13 @@ export interface Config {
    * orientation text would be false.
    */
   surfaceContext: boolean
+  /**
+   * Product name the model-visible surface text uses. A deployment that ships its
+   * own product states it here, so the orientation text names what the person is
+   * actually looking at without patching this package. Omitted keeps the shipped
+   * name.
+   */
+  productName?: string
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
 }
@@ -61,6 +68,7 @@ export const Config: z<Config> = z.object({
   openBrowser: z.boolean().default(true),
   printUrl: z.boolean().default(true),
   surfaceContext: z.boolean().default(true),
+  productName: z.string().default('DeepSeek Harness'),
   trustedHosts: z.array(String).default([]),
 })
 
@@ -132,11 +140,11 @@ export function resolveLanTrust(bindHost: string, extra: readonly string[]): Web
 }
 
 /** Model-visible orientation and acceptance boundary for sessions created through `dsh web`. */
-function webSurfacePrompt(webUrl: string): string {
+function webSurfacePrompt(webUrl: string, productName: string): string {
   const updateContract = 'The client-plugin HMR receiver is active, but client-plugin changes reload without a refresh only while '
     + '`pnpm run dev:web` is also running from this same checkout to rebuild their bundles; verify that watcher before promising automatic updates. '
     + 'Every other change — the apps/web shell and plain packages — requires rebuilding the affected Web artifacts and verifying this existing URL after a page refresh. '
-  return `You are interacting with the user through the DeepSeek Harness Web GUI at ${webUrl}. `
+  return `You are interacting with the user through the ${productName} Web GUI at ${webUrl}. `
     + 'When the user refers to "this page", "this GUI", or "this app" without naming another target, they mean this GUI. '
     + 'The browser provides no implicit DOM, route, or screenshot context. '
     + updateContract
@@ -236,7 +244,7 @@ export function apply(ctx: Context, config: Config): void {
       promptCtx.systemPrompt.section({
         name: 'app:web-surface',
         order: promptCtx.systemPrompt.getSectionOrder('WEB_SURFACE'),
-        text: () => webSurfacePrompt(localWebUrl(promptCtx)),
+        text: () => webSurfacePrompt(localWebUrl(promptCtx), config.productName ?? 'DeepSeek Harness'),
       })
     })
     ctx.inject(['shellEnv'], (runtimeCtx) => {
